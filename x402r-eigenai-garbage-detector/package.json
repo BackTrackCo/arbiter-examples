@@ -1,0 +1,34 @@
+{
+  "name": "x402r-eigenai-garbage-detector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "tsx --env-file=.env src/scripts/1-deploy-operator.ts",
+    "arbiter": "tsx --env-file=.env src/arbiter.ts",
+    "merchant": "tsx --env-file=.env src/merchant.ts",
+    "client": "tsx --env-file=.env src/client.ts",
+    "test": "tsx --env-file=.env --test test/e2e.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@x402/core": "^2.3.0",
+    "@x402/evm": "^2.3.0",
+    "@x402/express": "^2.3.0",
+    "@x402/fetch": "^2.7.0",
+    "@x402r/core": "link:../../x402r-sdk/packages/core",
+    "@x402r/evm": "^0.0.2",
+    "@x402r/helpers": "^0.1.0",
+    "@x402r/sdk": "link:../../x402r-sdk/packages/sdk",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "viem": "2.47.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.9.0"
+  }
+}
