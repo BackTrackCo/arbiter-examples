@@ -3,7 +3,7 @@ import { createPublicClient, createWalletClient, http } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrumSepolia } from 'viem/chains'
 import { ARBITRUM_SEPOLIA_RPC, CHAIN_ID } from '../config.js'
-import { klerosActions, pinataUploader } from '../kleros-plugin/index.js'
+import { klerosActions, createPinataUploader } from '../kleros-plugin/index.js'
 import { loadContext } from './shared.js'
 
 // ---------------------------------------------------------------------------
@@ -36,6 +36,7 @@ async function main() {
 
   // --- Payer submits evidence via .extend(klerosActions) ---
   console.log('1. Payer submitting structured evidence...')
+  const uploader = createPinataUploader(process.env.PINATA_JWT!)
   const payer = createPayerClient(clientConfig).extend(klerosActions)
 
   const payerTx = await payer.kleros.submitEvidence(
@@ -46,7 +47,7 @@ async function main() {
       description: 'Paid 10 USDC for API access but received 500 errors on all requests.',
       fileURI: '/ipfs/QmFakeScreenshot',
     },
-    pinataUploader,
+    uploader,
   )
   const payerReceipt = await publicClient.waitForTransactionReceipt({ hash: payerTx })
   console.log(`  Payer evidence tx: ${payerTx} (block ${payerReceipt.blockNumber})`)
@@ -63,7 +64,7 @@ async function main() {
       description: 'API was operational. Attached server logs showing 200 responses.',
       fileURI: '/ipfs/QmFakeServerLogs',
     },
-    pinataUploader,
+    uploader,
   )
   const merchantReceipt = await publicClient.waitForTransactionReceipt({ hash: merchantTx })
   console.log(`  Merchant evidence tx: ${merchantTx} (block ${merchantReceipt.blockNumber})`)

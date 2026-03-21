@@ -1,6 +1,6 @@
 import type { PaymentInfo } from '@x402r/core'
 import type { Address } from 'viem'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { CONTEXT_FILE } from '../config.js'
 
 interface SavedContext {
@@ -9,7 +9,9 @@ interface SavedContext {
   refundRequestAddress: Address
   refundRequestEvidenceAddress: Address
   paymentInfo: PaymentInfo
-  disputeID?: string
+  arbitratorAddress?: Address
+  arbitratorDisputeID?: string
+  externalDisputeID?: string
 }
 
 interface RawPaymentInfo {
@@ -28,6 +30,10 @@ interface RawPaymentInfo {
 }
 
 export function loadContext(): SavedContext {
+  if (!existsSync(CONTEXT_FILE)) {
+    throw new Error(`${CONTEXT_FILE} not found — run script 1 first (pnpm run setup)`)
+  }
+
   const raw = JSON.parse(readFileSync(CONTEXT_FILE, 'utf-8'))
   const pi = raw.paymentInfo as RawPaymentInfo
 
@@ -36,7 +42,9 @@ export function loadContext(): SavedContext {
     escrowPeriodAddress: raw.escrowPeriodAddress,
     refundRequestAddress: raw.refundRequestAddress,
     refundRequestEvidenceAddress: raw.refundRequestEvidenceAddress,
-    disputeID: raw.disputeID,
+    arbitratorAddress: raw.arbitratorAddress,
+    arbitratorDisputeID: raw.arbitratorDisputeID,
+    externalDisputeID: raw.externalDisputeID,
     paymentInfo: {
       operator: pi.operator,
       payer: pi.payer,

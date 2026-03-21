@@ -33,6 +33,7 @@ export type IpfsFetcher = (cid: string) => Promise<string> // returns JSON strin
 // ---------------------------------------------------------------------------
 
 export interface KlerosActions {
+  [key: string]: unknown
   kleros: {
     submitEvidence(
       paymentInfo: PaymentInfo,

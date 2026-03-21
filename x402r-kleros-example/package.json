@@ -4,18 +4,21 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "setup": "tsx src/scripts/1-setup-dispute.ts",
-    "evidence": "tsx src/scripts/2-submit-evidence.ts",
-    "bridge": "tsx src/scripts/3-bridge-to-kleros.ts",
-    "ruling": "tsx src/scripts/4-execute-ruling.ts",
+    "setup": "tsx --env-file=.env src/scripts/1-setup-dispute.ts",
+    "evidence": "tsx --env-file=.env src/scripts/2-submit-evidence.ts",
+    "bridge": "tsx --env-file=.env src/scripts/3-bridge-to-kleros.ts",
+    "ruling": "tsx --env-file=.env src/scripts/4-execute-ruling.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@x402r/core": "0.1.0",
-    "@x402r/sdk": "0.1.0",
-    "viem": "^2.46.3"
+    "@kleros/kleros-v2-contracts": "^0.12.0",
+    "@pinata/sdk": "^2.1.0",
+    "@x402r/core": "link:../../x402r-sdk/packages/core",
+    "@x402r/sdk": "link:../../x402r-sdk/packages/sdk",
+    "viem": "2.47.1"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "tsx": "^4.19.4",
     "typescript": "^5.9.0"
   }
