@@ -10,7 +10,6 @@ export function klerosActions(client: X402r): KlerosActions {
         }
         const json = JSON.stringify(evidence)
         const cid = await uploader(json)
-        console.log(`  IPFS uploaded: ${cid}`)
         return client.evidence.submit(paymentInfo, nonce, cid)
       },
 
@@ -48,5 +47,5 @@ export function klerosActions(client: X402r): KlerosActions {
 }
 
 export { KlerosRuling } from './types.js'
-export type { KlerosEvidence, KlerosActions, IpfsUploader, IpfsFetcher } from './types.js'
-export { pinataUploader, pinataFetcher } from './ipfs.js'
+export type { KlerosEvidence, KlerosActions, IpfsUploader, IpfsFetcher, } from './types.js'
+export { createPinataUploader, pinataFetcher } from './ipfs.js'

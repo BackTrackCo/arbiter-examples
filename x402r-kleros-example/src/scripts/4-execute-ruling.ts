@@ -2,9 +2,9 @@ import { createArbiterClient } from '@x402r/sdk'
 import { createPublicClient, createWalletClient, http } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrumSepolia } from 'viem/chains'
-import { ARBITRUM_SEPOLIA_RPC, CHAIN_ID, KLEROS, PAYMENT_AMOUNT } from '../config.js'
+import { ARBITRUM_SEPOLIA_RPC, CHAIN_ID, PAYMENT_AMOUNT } from '../config.js'
+import { klerosCoreAbi } from '../kleros-contracts.js'
 import { klerosActions, KlerosRuling } from '../kleros-plugin/index.js'
-import { klerosCoreRulerAbi } from '../kleros-abi/index.js'
 import { loadContext } from './shared.js'
 
 // ---------------------------------------------------------------------------
@@ -21,9 +21,9 @@ async function main() {
   const privateKey = process.env.PRIVATE_KEY as `0x${string}`
   if (!privateKey) throw new Error('PRIVATE_KEY env var required')
 
-  const { paymentInfo, disputeID: rawDisputeID, ...addresses } = loadContext()
-  if (rawDisputeID === undefined) throw new Error('No disputeID in context — run script 3 first')
-  const disputeID = BigInt(rawDisputeID)
+  const { paymentInfo, arbitratorAddress, arbitratorDisputeID: rawID, ...addresses } = loadContext()
+  if (!arbitratorAddress || rawID === undefined) throw new Error('No arbitrator data in context — run script 3 first')
+  const arbitratorDisputeID = BigInt(rawID)
 
   const account = privateKeyToAccount(privateKey)
   const transport = http(ARBITRUM_SEPOLIA_RPC)
@@ -39,20 +39,28 @@ async function main() {
   })
 
   // --- Read Kleros ruling ---
-  console.log(`1. Reading Kleros ruling for dispute ${disputeID}...`)
+  console.log(`1. Reading Kleros ruling for dispute ${arbitratorDisputeID}...`)
   const [ruling, tied, overridden] = await publicClient.readContract({
-    address: KLEROS.klerosCoreRuler,
-    abi: klerosCoreRulerAbi,
+    address: arbitratorAddress,
+    abi: klerosCoreAbi,
     functionName: 'currentRuling',
-    args: [disputeID],
+    args: [arbitratorDisputeID],
   })
   const rulingValue = Number(ruling) as KlerosRuling
   console.log(`  Ruling: ${rulingValue} — ${RULING_LABELS[rulingValue] ?? 'Unknown'}`)
   console.log(`  Tied: ${tied}, Overridden: ${overridden}`)
 
-  if (rulingValue === KlerosRuling.RefusedToArbitrate) {
+  // --force flag: skip Kleros ruling check and use PayerWins (for demo when Ruler is unavailable)
+  const forceMode = process.argv.includes('--force')
+  const effectiveRuling = forceMode ? KlerosRuling.PayerWins : rulingValue
+
+  if (forceMode) {
+    console.log('  --force: overriding with PayerWins (Refund)')
+  }
+
+  if (effectiveRuling === KlerosRuling.RefusedToArbitrate) {
     console.log('\nRuling is "Refused to Arbitrate" — no action taken on x402r.')
-    console.log('Use the Ruler UI to give a definitive ruling first.')
+    console.log('Use the Ruler UI to give a definitive ruling, or run with --force to skip.')
     return
   }
 
@@ -71,7 +79,7 @@ async function main() {
   const tx = await arbiter.kleros.executeRuling(
     paymentInfo,
     0n,
-    rulingValue,
+    effectiveRuling,
     PAYMENT_AMOUNT,
   )
 

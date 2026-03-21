@@ -104,6 +104,7 @@ async function main() {
     account,
     chainId: CHAIN_ID,
     paymentInfo,
+    tokenName: 'USD Coin', // Arb Sepolia USDC uses "USD Coin" in EIP-712 domain
   })
 
   const merchantClient = createMerchantClient({
