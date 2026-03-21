@@ -1,0 +1,22 @@
+{
+  "name": "x402r-kleros-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "tsx src/scripts/1-setup-dispute.ts",
+    "evidence": "tsx src/scripts/2-submit-evidence.ts",
+    "bridge": "tsx src/scripts/3-bridge-to-kleros.ts",
+    "ruling": "tsx src/scripts/4-execute-ruling.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@x402r/core": "0.1.0",
+    "@x402r/sdk": "0.1.0",
+    "viem": "^2.46.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.4",
+    "typescript": "^5.9.0"
+  }
+}
