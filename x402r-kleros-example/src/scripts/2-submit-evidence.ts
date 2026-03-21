@@ -2,8 +2,8 @@ import { createMerchantClient, createPayerClient } from '@x402r/sdk'
 import { createPublicClient, createWalletClient, http } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrumSepolia } from 'viem/chains'
-import { ARBITRUM_SEPOLIA_RPC, CHAIN_ID } from '../config.js'
-import { klerosActions, createPinataUploader } from '../kleros-plugin/index.js'
+import { ARBITRUM_SEPOLIA_RPC, CHAIN_ID, KLEROS } from '../config.js'
+import { klerosActions, createPinataUploader, pinataFetcher } from '../kleros-plugin/index.js'
 import { loadContext } from './shared.js'
 
 // ---------------------------------------------------------------------------
@@ -34,10 +34,16 @@ async function main() {
     refundRequestEvidenceAddress: addresses.refundRequestEvidenceAddress,
   }
 
+  const klerosConfig = {
+    arbitrator: KLEROS.klerosCoreRuler,
+    extraData: KLEROS.extraData,
+    ipfsUploader: createPinataUploader(process.env.PINATA_JWT!),
+    ipfsFetcher: pinataFetcher,
+  }
+
   // --- Payer submits evidence via .extend(klerosActions) ---
   console.log('1. Payer submitting structured evidence...')
-  const uploader = createPinataUploader(process.env.PINATA_JWT!)
-  const payer = createPayerClient(clientConfig).extend(klerosActions)
+  const payer = createPayerClient(clientConfig).extend(klerosActions(klerosConfig))
 
   const payerTx = await payer.kleros.submitEvidence(
     paymentInfo,
@@ -47,14 +53,13 @@ async function main() {
       description: 'Paid 10 USDC for API access but received 500 errors on all requests.',
       fileURI: '/ipfs/QmFakeScreenshot',
     },
-    uploader,
   )
   const payerReceipt = await publicClient.waitForTransactionReceipt({ hash: payerTx })
   console.log(`  Payer evidence tx: ${payerTx} (block ${payerReceipt.blockNumber})`)
 
   // --- Merchant submits evidence via .extend(klerosActions) ---
   console.log('\n2. Merchant submitting structured evidence...')
-  const merchant = createMerchantClient(clientConfig).extend(klerosActions)
+  const merchant = createMerchantClient(clientConfig).extend(klerosActions(klerosConfig))
 
   const merchantTx = await merchant.kleros.submitEvidence(
     paymentInfo,
@@ -64,7 +69,6 @@ async function main() {
       description: 'API was operational. Attached server logs showing 200 responses.',
       fileURI: '/ipfs/QmFakeServerLogs',
     },
-    uploader,
   )
   const merchantReceipt = await publicClient.waitForTransactionReceipt({ hash: merchantTx })
   console.log(`  Merchant evidence tx: ${merchantTx} (block ${merchantReceipt.blockNumber})`)

@@ -2,9 +2,8 @@ import { createArbiterClient } from '@x402r/sdk'
 import { createPublicClient, createWalletClient, http } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrumSepolia } from 'viem/chains'
-import { ARBITRUM_SEPOLIA_RPC, CHAIN_ID, PAYMENT_AMOUNT } from '../config.js'
-import { klerosCoreAbi } from '../kleros-contracts.js'
-import { klerosActions, KlerosRuling } from '../kleros-plugin/index.js'
+import { ARBITRUM_SEPOLIA_RPC, CHAIN_ID, KLEROS, PAYMENT_AMOUNT } from '../config.js'
+import { klerosActions, KlerosRuling, createPinataUploader, pinataFetcher } from '../kleros-plugin/index.js'
 import { loadContext } from './shared.js'
 
 // ---------------------------------------------------------------------------
@@ -20,6 +19,7 @@ const RULING_LABELS: Record<number, string> = {
 async function main() {
   const privateKey = process.env.PRIVATE_KEY as `0x${string}`
   if (!privateKey) throw new Error('PRIVATE_KEY env var required')
+  if (!process.env.PINATA_JWT) throw new Error('PINATA_JWT env var required')
 
   const { paymentInfo, arbitratorAddress, arbitratorDisputeID: rawID, ...addresses } = loadContext()
   if (!arbitratorAddress || rawID === undefined) throw new Error('No arbitrator data in context — run script 3 first')
@@ -38,34 +38,6 @@ async function main() {
     transport,
   })
 
-  // --- Read Kleros ruling ---
-  console.log(`1. Reading Kleros ruling for dispute ${arbitratorDisputeID}...`)
-  const [ruling, tied, overridden] = await publicClient.readContract({
-    address: arbitratorAddress,
-    abi: klerosCoreAbi,
-    functionName: 'currentRuling',
-    args: [arbitratorDisputeID],
-  })
-  const rulingValue = Number(ruling) as KlerosRuling
-  console.log(`  Ruling: ${rulingValue} — ${RULING_LABELS[rulingValue] ?? 'Unknown'}`)
-  console.log(`  Tied: ${tied}, Overridden: ${overridden}`)
-
-  // --force flag: skip Kleros ruling check and use PayerWins (for demo when Ruler is unavailable)
-  const forceMode = process.argv.includes('--force')
-  const effectiveRuling = forceMode ? KlerosRuling.PayerWins : rulingValue
-
-  if (forceMode) {
-    console.log('  --force: overriding with PayerWins (Refund)')
-  }
-
-  if (effectiveRuling === KlerosRuling.RefusedToArbitrate) {
-    console.log('\nRuling is "Refused to Arbitrate" — no action taken on x402r.')
-    console.log('Use the Ruler UI to give a definitive ruling, or run with --force to skip.')
-    return
-  }
-
-  // --- Execute ruling on x402r via plugin ---
-  console.log('\n2. Executing ruling on x402r...')
   const arbiter = createArbiterClient({
     publicClient,
     walletClient,
@@ -74,12 +46,30 @@ async function main() {
     escrowPeriodAddress: addresses.escrowPeriodAddress,
     refundRequestAddress: addresses.refundRequestAddress,
     refundRequestEvidenceAddress: addresses.refundRequestEvidenceAddress,
-  }).extend(klerosActions)
+  }).extend(klerosActions({
+    arbitrator: KLEROS.klerosCoreRuler,
+    extraData: KLEROS.extraData,
+    ipfsUploader: createPinataUploader(process.env.PINATA_JWT!),
+    ipfsFetcher: pinataFetcher,
+  }))
 
+  // --- Read Kleros ruling via plugin ---
+  console.log(`1. Reading Kleros ruling for dispute ${arbitratorDisputeID}...`)
+  const ruling = await arbiter.kleros.getRuling(arbitratorDisputeID)
+  console.log(`  Ruling: ${ruling} — ${RULING_LABELS[ruling] ?? 'Unknown'}`)
+
+  if (ruling === KlerosRuling.RefusedToArbitrate) {
+    console.log('\nNo ruling yet — use the Ruler UI to give a ruling first.')
+    console.log('See instructions printed by script 3 (pnpm run dispute).')
+    return
+  }
+
+  // --- Execute ruling on x402r via plugin ---
+  console.log('\n2. Executing ruling on x402r...')
   const tx = await arbiter.kleros.executeRuling(
     paymentInfo,
     0n,
-    effectiveRuling,
+    ruling,
     PAYMENT_AMOUNT,
   )
 

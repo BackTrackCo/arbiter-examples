@@ -11,7 +11,7 @@ interface SavedContext {
   paymentInfo: PaymentInfo
   arbitratorAddress?: Address
   arbitratorDisputeID?: string
-  externalDisputeID?: string
+  arbitrableAddress?: Address
 }
 
 interface RawPaymentInfo {
@@ -44,7 +44,7 @@ export function loadContext(): SavedContext {
     refundRequestEvidenceAddress: raw.refundRequestEvidenceAddress,
     arbitratorAddress: raw.arbitratorAddress,
     arbitratorDisputeID: raw.arbitratorDisputeID,
-    externalDisputeID: raw.externalDisputeID,
+    arbitrableAddress: raw.arbitrableAddress,
     paymentInfo: {
       operator: pi.operator,
       payer: pi.payer,
