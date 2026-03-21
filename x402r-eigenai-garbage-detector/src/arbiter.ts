@@ -9,9 +9,9 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { createX402r, type PaymentInfo } from "@x402r/sdk";
-import { fromNetworkId } from "@x402r/core/config";
 import { EigenAIClient } from "./eigenai-client.js";
 import { detectGarbage, type GarbageVerdict } from "./garbage-detector.js";
+import { garbageDetectorActions } from "./garbage-detector-plugin.js";
 import {
   PRIVATE_KEY, CHAIN_ID, CHAIN, EIGENAI_GRANT_SERVER, EIGENAI_MODEL, EIGENAI_SEED,
 } from "./config.js";
@@ -26,13 +26,13 @@ const eigenai = new EigenAIClient(account, EIGENAI_GRANT_SERVER, EIGENAI_MODEL);
 const walletClient = createWalletClient({ account, chain: CHAIN, transport: http() });
 const publicClient = createPublicClient({ chain: CHAIN, transport: http() });
 
-function getX402rClient(operatorAddress: Address) {
+function getGarbageDetectorClient(operatorAddress: Address) {
   return createX402r({
     publicClient,
     walletClient,
     operatorAddress,
     chainId: CHAIN_ID,
-  });
+  }).extend(garbageDetectorActions);
 }
 
 interface StoredVerdict {
@@ -74,7 +74,7 @@ app.post("/verify", async (req, res) => {
     const opAddr = operatorAddress ?? OPERATOR_ADDRESS;
     if (scheme === "escrow" && gv.verdict === "PASS" && paymentInfo && opAddr) {
       try {
-        const sdk = getX402rClient(opAddr);
+        const sdk = getGarbageDetectorClient(opAddr);
         const pi: PaymentInfo = {
           operator: paymentInfo.operator,
           payer: paymentInfo.payer,
@@ -89,7 +89,7 @@ app.post("/verify", async (req, res) => {
           feeReceiver: paymentInfo.feeReceiver,
           salt: BigInt(paymentInfo.salt),
         };
-        const releaseHash = await sdk.payment.release(pi, pi.maxAmount);
+        const releaseHash = await sdk.garbageDetector.release(pi);
         stored.releaseHash = releaseHash;
         console.log(`[verify] Released: ${releaseHash}`);
       } catch (err) {
