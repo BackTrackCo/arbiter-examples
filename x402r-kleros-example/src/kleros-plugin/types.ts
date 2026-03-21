@@ -1,4 +1,4 @@
-import type { Hash } from 'viem'
+import type { Address, Hash, Hex } from 'viem'
 import type { PaymentInfo } from '@x402r/core'
 
 // ---------------------------------------------------------------------------
@@ -29,6 +29,27 @@ export type IpfsUploader = (content: string) => Promise<string> // returns CID
 export type IpfsFetcher = (cid: string) => Promise<string> // returns JSON string
 
 // ---------------------------------------------------------------------------
+// Plugin config
+// ---------------------------------------------------------------------------
+
+export interface KlerosConfig {
+  arbitrator: Address // KlerosCoreRuler address
+  extraData: Hex // abi.encode(uint96 courtId, uint256 minJurors)
+  ipfsUploader: IpfsUploader
+  ipfsFetcher: IpfsFetcher
+}
+
+// ---------------------------------------------------------------------------
+// Plugin return types
+// ---------------------------------------------------------------------------
+
+export interface CreateDisputeResult {
+  disputeID: bigint
+  arbitrableAddress: Address
+  txHash: Hash
+}
+
+// ---------------------------------------------------------------------------
 // Plugin actions
 // ---------------------------------------------------------------------------
 
@@ -39,14 +60,19 @@ export interface KlerosActions {
       paymentInfo: PaymentInfo,
       nonce: bigint,
       evidence: KlerosEvidence,
-      uploader: IpfsUploader,
     ): Promise<Hash>
 
     getEvidence(
       paymentInfo: PaymentInfo,
       nonce: bigint,
-      fetcher: IpfsFetcher,
     ): Promise<KlerosEvidence[]>
+
+    createDispute(
+      paymentInfo: PaymentInfo,
+      nonce: bigint,
+    ): Promise<CreateDisputeResult>
+
+    getRuling(disputeID: bigint): Promise<KlerosRuling>
 
     executeRuling(
       paymentInfo: PaymentInfo,
