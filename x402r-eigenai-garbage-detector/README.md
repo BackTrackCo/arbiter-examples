@@ -36,8 +36,9 @@ cp .env.example .env
 ```
 
 > **Note:** This example links to workspace `@x402r/core` and `@x402r/sdk` packages
-> (not npm) because the published `@x402r/core@0.1.0` hasn't been updated with
-> unified CREATE3 addresses yet. Run `pnpm build` in `x402r-sdk/` first.
+> because the deploy script uses `deployDeliveryProtectionOperator()` which is
+> pending merge ([x402r-sdk#91](https://github.com/BackTrackCo/x402r-sdk/pull/91)).
+> Once published, switch to npm versions. Run `pnpm build` in `x402r-sdk/` first.
 
 ## Running
 
