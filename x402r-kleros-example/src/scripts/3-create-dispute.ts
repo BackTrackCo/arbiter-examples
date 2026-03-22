@@ -43,6 +43,7 @@ async function main() {
     refundRequestEvidenceAddress: addresses.refundRequestEvidenceAddress,
   }).extend(klerosActions({
     arbitrator: KLEROS.klerosCoreRuler,
+    disputeResolver: KLEROS.disputeResolverRuler,
     extraData: KLEROS.extraData,
     ipfsUploader: createPinataUploader(process.env.PINATA_JWT!),
     ipfsFetcher: pinataFetcher,

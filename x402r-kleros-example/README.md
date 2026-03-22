@@ -1,6 +1,6 @@
 # x402r + Kleros Arbitration Example
 
-Toy example showing how to integrate [Kleros](https://kleros.io) decentralized arbitration with x402r refundable payments using the `.extend(klerosActions)` plugin pattern.
+Example showing how to integrate [Kleros](https://kleros.io) decentralized arbitration with x402r refundable payments using the `.extend(klerosActions)` plugin pattern.
 
 **Chain:** Arbitrum Sepolia (421614)
 
@@ -8,11 +8,11 @@ Toy example showing how to integrate [Kleros](https://kleros.io) decentralized a
 
 The example connects three systems:
 
-**x402r Protocol (on-chain)** -- USDC flows into `AuthCaptureEscrow`, managed by a `PaymentOperator` that handles authorize/charge/refund. Three condition contracts gate the refund flow: `EscrowPeriod` (time lock), `RefundRequest` (arbiter approve/deny), and `RefundRequestEvidence` (on-chain CID storage for structured evidence).
+**x402r Protocol (on-chain)** -- USDC payment flows into `AuthCaptureEscrow`, managed by a `PaymentOperator`. Three condition contracts gate the refund flow: `EscrowPeriod` (time lock), `RefundRequest` (arbiter approve/deny), and `RefundRequestEvidence` (on-chain CID storage for structured evidence).
 
-**Kleros (on-chain, separate)** -- `KlerosCoreRuler` is the mock arbitrator for instant testnet rulings. In production this would be the real `KlerosCore` with juror voting. The plugin deploys a `ToyArbitrable` contract that forwards `createDispute()` to the Ruler and accepts `rule()` callbacks.
+**Kleros (on-chain, separate)** -- `KlerosCoreRuler` is the mock arbitrator for instant testnet rulings. In production this would be the real `KlerosCore` with juror voting. `DisputeResolverRuler` is the arbitrable contract that creates disputes and receives `rule()` callbacks from the Ruler.
 
-**IPFS (off-chain)** -- Evidence is structured JSON (ERC-1497), pinned to IPFS via Pinata. The CID is stored on-chain in x402r's `RefundRequestEvidence` contract. The arbiter bot reads CIDs from x402r and fetches the JSON from an IPFS gateway.
+**IPFS (off-chain)** -- Evidence is structured JSON (ERC-1497), pinned to IPFS via Pinata. The CID is stored on-chain in x402r's `RefundRequestEvidence` contract.
 
 ## Prerequisites
 
@@ -44,7 +44,6 @@ pnpm run setup
 pnpm run evidence
 
 # 3. Create dispute on KlerosCoreRuler via plugin
-#    (auto-deploys ToyArbitrable, sets ruling mode, creates dispute)
 pnpm run dispute
 
 # 4. Give ruling (1 = Payer Wins, 2 = Receiver Wins)
@@ -54,25 +53,22 @@ pnpm run give-ruling 1
 pnpm run ruling
 ```
 
-## KlerosCoreRuler on Arb Sepolia
+## Self-deployed Kleros contracts
 
-Kleros has the [KlerosCoreRuler](https://github.com/kleros/kleros-v2/blob/dev/contracts/src/arbitration/devtools/KlerosCoreRuler.sol) deployed on Arbitrum mainnet but not on Arb Sepolia yet. The address they provided (`0x1Bd4...`) is actually a regular KlerosCore (full juror-based system), not the Ruler.
+Kleros has [KlerosCoreRuler](https://github.com/kleros/kleros-v2/blob/dev/contracts/src/arbitration/devtools/KlerosCoreRuler.sol) and [DisputeResolverRuler](https://github.com/kleros/kleros-v2/blob/dev/contracts/src/arbitration/devtools/DisputeResolverRuler.sol) deployed on Arbitrum mainnet but not on Arb Sepolia. The address they provided as the "Ruler" (`0x1Bd4...`) is actually a regular KlerosCore (full juror-based system) -- we verified by checking the implementation bytecode behind the proxy.
 
-We deployed our own KlerosCoreRuler on Arb Sepolia using the compiled bytecode from `@kleros/kleros-v2-contracts`. The deploy script is included:
+We deployed both contracts ourselves on Arb Sepolia using the compiled bytecode from `@kleros/kleros-v2-contracts`:
+
+- **KlerosCoreRuler** -- UUPS proxy, initialized with court 1 at 0.0001 ETH per juror
+- **DisputeResolverRuler** -- the arbitrable contract that creates disputes and implements `rule()`
+
+The deploy script is included:
 
 ```bash
 pnpm run deploy-ruler
 ```
 
-This deploys the implementation + ERC1967 proxy and initializes court 1 with a low `feeForJuror` (0.0001 ETH) for cheap testnet disputes.
-
-The Kleros [Ruler UI](https://dev--kleros-v2-testnet-devtools.netlify.app/ruler) is hardcoded to Kleros's own address, so it won't work with our deployment. Instead, we give rulings programmatically via `pnpm run give-ruling`. Once Kleros deploys the official Ruler on Arb Sepolia, the UI will work and the `give-ruling` script becomes optional.
-
-### Why ToyArbitrable is needed
-
-KlerosCoreRuler's `executeRuling()` atomically stores the ruling AND calls `arbitrable.rule(disputeID, ruling)`. If the arbitrable is an EOA (like a wallet), the `.rule()` call fails and the entire transaction reverts. ToyArbitrable is a minimal contract that implements `rule()` as a no-op, allowing `executeRuling()` to succeed.
-
-If Kleros deploys a [DisputeResolverRuler](https://github.com/kleros/kleros-v2/blob/dev/contracts/src/arbitration/devtools/DisputeResolverRuler.sol) on Arb Sepolia, it would replace ToyArbitrable entirely since DisputeResolver already implements `rule()`.
+The Kleros [Ruler UI](https://dev--kleros-v2-testnet-devtools.netlify.app/ruler) is hardcoded to Kleros's own address, so rulings are given programmatically via `pnpm run give-ruling`. Once Kleros deploys the official Ruler on Arb Sepolia, the UI will work and the `give-ruling` script becomes optional.
 
 ## How It Works
 
@@ -97,10 +93,9 @@ RefundRequestEvidence.submit(paymentInfo, nonce, CID) -> store CID on-chain
 ```
 RefundRequestEvidence.getBatch(paymentInfo)          -> read CIDs from x402r
   + fetch each CID from IPFS gateway                -> reconstruct evidence
-deploy ToyArbitrable                                -> contract for rule() callback
-KlerosCoreRuler.changeRulingModeToManual(arbitrable) -> wallet becomes ruler
+KlerosCoreRuler.changeRulingModeToManual(resolver)  -> wallet becomes ruler
 KlerosCoreRuler.arbitrationCost(extraData)           -> get dispute creation fee
-ToyArbitrable.createDispute(arbitrator, choices, extraData) -> create dispute (sends ETH)
+DisputeResolverRuler.createDisputeForTemplate(...)   -> create dispute (sends ETH)
   -> emits DisputeCreation(disputeID)
 ```
 
@@ -128,6 +123,7 @@ import { klerosActions, createPinataUploader, pinataFetcher } from './kleros-plu
 const arbiter = createArbiterClient({ ... }).extend(
   klerosActions({
     arbitrator: KLEROS.klerosCoreRuler,
+    disputeResolver: KLEROS.disputeResolverRuler,
     extraData: KLEROS.extraData,
     ipfsUploader: createPinataUploader(jwt),
     ipfsFetcher: pinataFetcher,
@@ -137,8 +133,8 @@ const arbiter = createArbiterClient({ ... }).extend(
 // Submit evidence
 await arbiter.kleros.submitEvidence(paymentInfo, 0n, { name: '...', description: '...' })
 
-// Create dispute (auto-deploys ToyArbitrable + sets ruling mode)
-const { disputeID, arbitrableAddress } = await arbiter.kleros.createDispute(paymentInfo, 0n)
+// Create dispute (sets ruling mode + creates via DisputeResolverRuler)
+const { disputeID } = await arbiter.kleros.createDispute(paymentInfo, 0n)
 
 // Read ruling
 const ruling = await arbiter.kleros.getRuling(disputeID)
@@ -153,7 +149,7 @@ Five methods added by `klerosActions`:
 |--------|-------------|
 | `submitEvidence()` | JSON-stringify evidence, pin to IPFS via Pinata, store CID on-chain |
 | `getEvidence()` | Read CIDs from chain, fetch from IPFS, parse back to structured objects |
-| `createDispute()` | Deploy ToyArbitrable, set ruling mode, create dispute on KlerosCoreRuler |
+| `createDispute()` | Set ruling mode, create dispute via DisputeResolverRuler on KlerosCoreRuler |
 | `getRuling()` | Read current ruling from KlerosCoreRuler |
 | `executeRuling()` | Map Kleros ruling (0=abstain, 1=payer wins, 2=receiver wins) to x402r refund action |
 
@@ -167,9 +163,9 @@ The published `@x402r/core@0.1.0` on npm doesn't include Arbitrum Sepolia in its
 
 The Kleros package ships CJS code in its `esm/` directory, breaking ESM imports. We use `createRequire` in `src/kleros-contracts.ts` to load it as CJS and re-export the ABIs we need.
 
-### Self-deployed KlerosCoreRuler
+### Self-deployed Kleros contracts
 
-We deployed our own KlerosCoreRuler on Arb Sepolia because Kleros hasn't deployed the Ruler on testnet yet. The Ruler UI is hardcoded to Kleros's address, so rulings must be given programmatically via the `give-ruling` script. See `recommendations.md` for what Kleros could do to improve the testnet developer experience.
+We deployed our own KlerosCoreRuler and DisputeResolverRuler on Arb Sepolia because Kleros hasn't deployed them on testnet yet. The Ruler UI is hardcoded to Kleros's address, so rulings must be given programmatically via the `give-ruling` script. See `recommendations.md` for details.
 
 ### What production would look like
 
@@ -179,14 +175,13 @@ We deployed our own KlerosCoreRuler on Arb Sepolia because Kleros hasn't deploye
 1. Payer/merchant submit evidence via klerosActions plugin     <- same as now
 2. Arbiter bot calls DisputeResolver.createDisputeForTemplate()
    -> DisputeResolver calls KlerosCore.createDispute()          <- real jurors
-   -> Evidence bridged to EvidenceModule
 3. Jurors vote on Kleros Court (days/weeks)
 4. KlerosCore.currentRuling() returns real verdict
    -> Arbiter bot calls klerosActions.executeRuling()           <- same as now
    -> Refund approved or denied on x402r
 ```
 
-The plugin pattern and evidence flow are production-ready. Only the dispute creation and ruling steps need the real Kleros infrastructure.
+The plugin pattern and evidence flow are production-ready. Only the ruling mechanism changes (real jurors instead of the Ruler).
 
 ## Contracts
 
@@ -205,3 +200,4 @@ The plugin pattern and evidence flow are production-ready. Only the dispute crea
 |----------|---------|
 | KlerosCoreRuler (proxy) | `0x58d4348bb6aeab75d09483e407f348b8497d381a` |
 | KlerosCoreRuler (impl) | `0x64733ce909ab8735d982943cb69d01293b704a52` |
+| DisputeResolverRuler | `0x51e62414b8fbf5fe02390002d0530b08c1166302` |

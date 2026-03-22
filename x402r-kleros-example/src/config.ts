@@ -21,6 +21,8 @@ export const USDC: Address = '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d'
 export const KLEROS = {
   /** KlerosCoreRuler — mock arbitrator for instant testnet rulings (self-deployed) */
   klerosCoreRuler: '0x58d4348bb6aeab75d09483e407f348b8497d381a' as Address,
+  /** DisputeResolverRuler — arbitrable contract that implements rule() (self-deployed) */
+  disputeResolverRuler: '0x51e62414b8fbf5fe02390002d0530b08c1166302' as Address,
   /** abi.encode(uint96 courtId=1, uint256 minJurors=3) */
   extraData: '0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000003' as Hex,
 } as const

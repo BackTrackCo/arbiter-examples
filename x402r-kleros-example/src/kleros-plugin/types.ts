@@ -34,6 +34,7 @@ export type IpfsFetcher = (cid: string) => Promise<string> // returns JSON strin
 
 export interface KlerosConfig {
   arbitrator: Address // KlerosCoreRuler address
+  disputeResolver: Address // DisputeResolverRuler address (implements rule())
   extraData: Hex // abi.encode(uint96 courtId, uint256 minJurors)
   ipfsUploader: IpfsUploader
   ipfsFetcher: IpfsFetcher
