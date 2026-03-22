@@ -1,38 +1,32 @@
 import express from "express";
 import cors from "cors";
-import {
-  createPublicClient,
-  createWalletClient,
-  http,
-  type Address,
-  type Hex,
-} from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { createX402r, type PaymentInfo } from "@x402r/sdk";
+import { type Address, type Hex } from "viem";
+import { createX402r } from "@x402r/sdk";
 import { EigenAIClient } from "./eigenai-client.js";
-import { detectGarbage, type GarbageVerdict } from "./garbage-detector.js";
+import { type GarbageVerdict } from "./garbage-detector.js";
 import { garbageDetectorActions } from "./garbage-detector-plugin.js";
-import {
-  PRIVATE_KEY, CHAIN_ID, CHAIN, EIGENAI_GRANT_SERVER, EIGENAI_MODEL, EIGENAI_SEED,
-} from "./config.js";
+import { CHAIN_ID, EIGENAI } from "./config.js";
+import { createClients, x402rConfig, loadContext } from "./scripts/shared.js";
 
-const account = privateKeyToAccount(PRIVATE_KEY);
+// ---------------------------------------------------------------------------
+// Arbiter: Evaluate response bodies via EigenAI, release on PASS
+//
+// Usage: pnpm run arbiter
+// ---------------------------------------------------------------------------
+
+const clients = createClients();
+const eigenai = new EigenAIClient(clients.account, EIGENAI.grantServer, EIGENAI.model);
 const PORT = Number(process.env.ARBITER_PORT ?? 3001);
-const OPERATOR_ADDRESS = process.env.OPERATOR_ADDRESS as Address | undefined;
 
-const eigenai = new EigenAIClient(account, EIGENAI_GRANT_SERVER, EIGENAI_MODEL);
+const gdConfig = { eigenai, seed: EIGENAI.seed };
 
-// SDK client for on-chain release
-const walletClient = createWalletClient({ account, chain: CHAIN, transport: http() });
-const publicClient = createPublicClient({ chain: CHAIN, transport: http() });
-
-function getGarbageDetectorClient(operatorAddress: Address) {
-  return createX402r({
-    publicClient,
-    walletClient,
-    operatorAddress,
-    chainId: CHAIN_ID,
-  }).extend(garbageDetectorActions);
+// Try to load operator from context.json, fall back to env
+let operatorAddress: Address | undefined;
+try {
+  const ctx = loadContext();
+  operatorAddress = ctx.operatorAddress;
+} catch {
+  operatorAddress = process.env.OPERATOR_ADDRESS as Address | undefined;
 }
 
 interface StoredVerdict {
@@ -57,25 +51,28 @@ app.post("/verify", async (req, res) => {
     network = `eip155:${CHAIN_ID}`,
     scheme = "escrow",
     paymentInfo,
-    operatorAddress,
   } = req.body;
   if (!responseBody) { res.status(400).json({ error: "responseBody is required" }); return; }
 
   console.log(`[verify] tx=${transaction} scheme=${scheme}`);
   try {
-    const gv = await detectGarbage(eigenai, responseBody, EIGENAI_SEED);
+    const opAddr = operatorAddress;
+    if (!opAddr) throw new Error("No operator address — run setup or set OPERATOR_ADDRESS");
+
+    const sdk = createX402r(x402rConfig({ operatorAddress: opAddr, escrowPeriodAddress: undefined as any }, clients))
+      .extend(garbageDetectorActions(gdConfig));
+
+    const gv = await sdk.garbageDetector.evaluate(responseBody);
     console.log(`[verify] ${gv.verdict} — ${gv.reason}`);
 
     const stored: StoredVerdict = {
-      verdict: gv, transaction, network, arbiter: account.address, timestamp: Date.now(),
+      verdict: gv, transaction, network, arbiter: clients.account.address, timestamp: Date.now(),
     };
 
-    // If escrow + PASS + paymentInfo provided, release via SDK
-    const opAddr = operatorAddress ?? OPERATOR_ADDRESS;
-    if (scheme === "escrow" && gv.verdict === "PASS" && paymentInfo && opAddr) {
+    // Release on PASS for escrow scheme
+    if (scheme === "escrow" && gv.verdict === "PASS" && paymentInfo) {
       try {
-        const sdk = getGarbageDetectorClient(opAddr);
-        const pi: PaymentInfo = {
+        const pi = {
           operator: paymentInfo.operator,
           payer: paymentInfo.payer,
           receiver: paymentInfo.receiver,
@@ -89,16 +86,14 @@ app.post("/verify", async (req, res) => {
           feeReceiver: paymentInfo.feeReceiver,
           salt: BigInt(paymentInfo.salt),
         };
-        const releaseHash = await sdk.garbageDetector.release(pi);
-        stored.releaseHash = releaseHash;
-        console.log(`[verify] Released: ${releaseHash}`);
+        stored.releaseHash = await sdk.garbageDetector.release(pi);
+        console.log(`[verify] Released: ${stored.releaseHash}`);
       } catch (err) {
         console.error("[verify] Release failed:", err);
       }
     }
 
     verdictStore.set(transaction, stored);
-
     res.json({
       verdict: gv.verdict,
       reason: gv.reason,
@@ -126,17 +121,19 @@ app.get("/verdict/:transaction", (req, res) => {
 
 app.get("/health", (_req, res) => {
   res.json({
-    status: "ok", arbiter: account.address, chainId: CHAIN_ID,
-    operator: OPERATOR_ADDRESS ?? null,
-    model: EIGENAI_MODEL, seed: EIGENAI_SEED, verdictCount: verdictStore.size,
+    status: "ok",
+    arbiter: clients.account.address,
+    chainId: CHAIN_ID,
+    operator: operatorAddress ?? null,
+    model: EIGENAI.model,
+    seed: EIGENAI.seed,
+    verdictCount: verdictStore.size,
   });
 });
 
 app.listen(PORT, () => {
   console.log(`[arbiter] Garbage detector on :${PORT}`);
-  console.log(`[arbiter] Address: ${account.address}`);
-  console.log(`[arbiter] Model: ${EIGENAI_MODEL}, Seed: ${EIGENAI_SEED}`);
-  if (OPERATOR_ADDRESS) console.log(`[arbiter] Operator: ${OPERATOR_ADDRESS}`);
+  console.log(`[arbiter] Address: ${clients.account.address}`);
+  console.log(`[arbiter] Model: ${EIGENAI.model}, Seed: ${EIGENAI.seed}`);
+  if (operatorAddress) console.log(`[arbiter] Operator: ${operatorAddress}`);
 });
-
-export { app, verdictStore };

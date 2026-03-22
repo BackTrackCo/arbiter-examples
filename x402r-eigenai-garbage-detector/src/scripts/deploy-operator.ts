@@ -1,31 +1,45 @@
-import { createPublicClient, createWalletClient, http } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { getChainConfig } from "@x402r/sdk";
 import { deployDeliveryProtectionOperator } from "@x402r/core/deploy";
-import { PRIVATE_KEY, CHAIN_ID, CHAIN } from "../config.js";
+import { writeFileSync } from "node:fs";
+import { CHAIN_ID, CONTEXT_FILE } from "../config.js";
+import { createClients } from "./shared.js";
 
-const account = privateKeyToAccount(PRIVATE_KEY);
-const transport = http();
-const publicClient = createPublicClient({ chain: CHAIN, transport });
-const walletClient = createWalletClient({ account, chain: CHAIN, transport });
+// ---------------------------------------------------------------------------
+// Setup: Deploy delivery protection operator (one-time)
+// ---------------------------------------------------------------------------
 
-const config = getChainConfig(CHAIN_ID);
-const escrowPeriodSeconds = BigInt(process.env.ESCROW_PERIOD_SECONDS ?? 86400);
+async function main() {
+  const { account, publicClient, walletClient } = createClients();
 
-console.log(`Deploying delivery protection operator...`);
-console.log(`  Arbiter: ${account.address}`);
-console.log(`  Chain: ${config.name} (${CHAIN_ID})`);
-console.log(`  Escrow period: ${escrowPeriodSeconds}s`);
+  console.log(`Wallet: ${account.address}`);
+  console.log(`Chain:  Base Sepolia (${CHAIN_ID})`);
 
-const result = await deployDeliveryProtectionOperator(walletClient, publicClient, {
-  chainId: CHAIN_ID,
-  arbiter: account.address,
-  feeRecipient: account.address,
-  escrowPeriodSeconds,
+  console.log("\nDeploying delivery protection operator...");
+  const deployment = await deployDeliveryProtectionOperator(
+    walletClient,
+    publicClient,
+    {
+      chainId: CHAIN_ID,
+      arbiter: account.address,
+      feeRecipient: account.address,
+      escrowPeriodSeconds: 86400n,
+    },
+  );
+
+  console.log(`  Operator:         ${deployment.operatorAddress}`);
+  console.log(`  EscrowPeriod:     ${deployment.escrowPeriodAddress}`);
+  console.log(`  ArbiterCondition: ${deployment.arbiterConditionAddress}`);
+  console.log(`  New: ${deployment.summary.newCount}, existing: ${deployment.summary.existingCount}`);
+
+  const context = {
+    operatorAddress: deployment.operatorAddress,
+    escrowPeriodAddress: deployment.escrowPeriodAddress,
+    arbiterConditionAddress: deployment.arbiterConditionAddress,
+  };
+  writeFileSync(CONTEXT_FILE, JSON.stringify(context, null, 2));
+  console.log(`\nSaved to ${CONTEXT_FILE}`);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
 });
-
-console.log(`  EscrowPeriod: ${result.escrowPeriodAddress}`);
-console.log(`  StaticAddressCondition(arbiter): ${result.arbiterConditionAddress}`);
-console.log(`  PaymentOperator: ${result.operatorAddress}`);
-console.log(`  New: ${result.summary.newCount}, Existing: ${result.summary.existingCount}`);
-console.log(`\nAdd to .env:\n  OPERATOR_ADDRESS=${result.operatorAddress}`);

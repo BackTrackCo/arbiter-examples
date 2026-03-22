@@ -1,5 +1,6 @@
 node_modules/
 dist/
 .env
+context.json
 *.log
 .DS_Store

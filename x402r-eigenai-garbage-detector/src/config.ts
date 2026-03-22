@@ -1,21 +1,33 @@
-import { type Address, type Hex } from "viem";
-import { baseSepolia, base } from "viem/chains";
+import type { Address, Hex } from "viem";
 
-export const CHAIN_MAP = {
-  84532: baseSepolia,
-  8453: base,
+// ---------------------------------------------------------------------------
+// Chain
+// ---------------------------------------------------------------------------
+
+export const CHAIN_ID = 84532;
+export const BASE_SEPOLIA_RPC =
+  process.env.BASE_SEPOLIA_RPC ?? undefined; // uses viem default if unset
+
+// ---------------------------------------------------------------------------
+// Tokens
+// ---------------------------------------------------------------------------
+
+export const USDC: Address = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+
+// ---------------------------------------------------------------------------
+// EigenAI
+// ---------------------------------------------------------------------------
+
+export const EIGENAI = {
+  grantServer: process.env.EIGENAI_GRANT_SERVER ?? "https://determinal-api.eigenarcade.com",
+  model: process.env.EIGENAI_MODEL ?? "gpt-oss-120b-f16",
+  seed: Number(process.env.EIGENAI_SEED ?? 42),
 } as const;
 
-export function getEnv(key: string, fallback?: string): string {
-  const val = process.env[key] ?? fallback;
-  if (!val) throw new Error(`${key} env required`);
-  return val;
-}
+// ---------------------------------------------------------------------------
+// Shared constants
+// ---------------------------------------------------------------------------
 
-export const PRIVATE_KEY = getEnv("PRIVATE_KEY") as Hex;
-export const CHAIN_ID = Number(process.env.CHAIN_ID ?? 84532);
-export const CHAIN = CHAIN_MAP[CHAIN_ID as keyof typeof CHAIN_MAP];
-export const NETWORK_ID = `eip155:${CHAIN_ID}` as const;
-export const EIGENAI_GRANT_SERVER = process.env.EIGENAI_GRANT_SERVER ?? "https://determinal-api.eigenarcade.com";
-export const EIGENAI_MODEL = process.env.EIGENAI_MODEL ?? "gpt-oss-120b-f16";
-export const EIGENAI_SEED = Number(process.env.EIGENAI_SEED ?? 42);
+export const PAYMENT_AMOUNT = 10_000n; // 0.01 USDC (6 decimals)
+export const FAR_FUTURE = 281_474_976_710_655; // max uint48
+export const CONTEXT_FILE = "context.json";

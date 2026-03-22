@@ -4,11 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "deploy": "tsx --env-file=.env src/scripts/deploy-operator.ts",
+    "setup": "tsx --env-file=.env src/scripts/deploy-operator.ts",
     "arbiter": "tsx --env-file=.env src/arbiter.ts",
     "merchant": "tsx --env-file=.env src/merchant.ts",
     "client": "tsx --env-file=.env src/client.ts",
-    "test": "tsx --env-file=.env --test test/e2e.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
