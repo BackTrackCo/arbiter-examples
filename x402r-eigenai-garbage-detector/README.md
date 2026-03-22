@@ -72,7 +72,8 @@ const sdk = createX402r({ ... }).extend(
 |--------|---------|
 | `pnpm run setup` | Deploy PaymentOperator + conditions (one-time) |
 | `pnpm run arbiter` | Start garbage detection service (long-running) |
-| `pnpm run merchant` | Start merchant with x402 middleware + hook (long-running) |
+| `pnpm run merchant` | Merchant with EIP-712 receipts (needs wallet) |
+| `pnpm run merchant:jws` | Merchant with JWS receipts (no wallet needed) |
 | `pnpm run client` | Make paid requests through x402 flow |
 
 ## Limitations

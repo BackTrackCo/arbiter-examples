@@ -1,25 +1,31 @@
 import express from "express";
 import cors from "cors";
+import crypto from "node:crypto";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { EscrowServerScheme } from "@x402r/evm/escrow/server";
 import {
-  createEIP712OfferReceiptIssuer,
+  createJWSOfferReceiptIssuer,
   createOfferReceiptExtension,
   declareOfferReceiptExtension,
+  type JWSSigner,
 } from "@x402/extensions/offer-receipt";
 import { getChainConfig } from "@x402r/sdk";
 import { forwardToArbiter } from "./hook.js";
 import { CHAIN_ID } from "./config.js";
-import { createClients, loadContext } from "./scripts/shared.js";
+import { loadContext } from "./scripts/shared.js";
 
 // ---------------------------------------------------------------------------
-// Merchant (wallet): EIP-712 receipt signing with merchant's private key
+// Merchant (no wallet): JWS receipt signing with ES256 key
 //
-// Usage: FACILITATOR_URL=http://localhost:4022 pnpm run merchant
+// No private key needed — generates an ephemeral ECDSA key for signing.
+// In production, use a KMS-backed key or load from secure storage.
+//
+// Usage: FACILITATOR_URL=http://localhost:4022 MERCHANT_ADDRESS=0x... pnpm run merchant:jws
 // ---------------------------------------------------------------------------
 
-const { account } = createClients();
+const MERCHANT_ADDRESS = process.env.MERCHANT_ADDRESS as `0x${string}`;
+if (!MERCHANT_ADDRESS) throw new Error("MERCHANT_ADDRESS env required (no wallet in JWS mode)");
 const PORT = Number(process.env.MERCHANT_PORT ?? 4021);
 const FACILITATOR_URL = process.env.FACILITATOR_URL;
 if (!FACILITATOR_URL) throw new Error("FACILITATOR_URL env required");
@@ -29,10 +35,19 @@ const networkId = `eip155:${CHAIN_ID}` as const;
 const ctx = loadContext();
 const { authCaptureEscrow } = getChainConfig(CHAIN_ID);
 
-const issuer = createEIP712OfferReceiptIssuer(
-  `did:pkh:eip155:${CHAIN_ID}:${account.address}`,
-  (params) => account.signTypedData(params),
-);
+// JWS with ES256 — no wallet needed
+const ecKey = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+const jwsSigner: JWSSigner = {
+  format: "jws",
+  algorithm: "ES256",
+  sign: async (payload: Uint8Array) => {
+    const sign = crypto.createSign("SHA256");
+    sign.update(payload);
+    return sign.sign({ key: ecKey.privateKey, dsaEncoding: "ieee-p1363" }, "base64url");
+  },
+};
+
+const issuer = createJWSOfferReceiptIssuer("did:web:localhost#key-1", jwsSigner);
 
 const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
 const resourceServer = new x402ResourceServer(facilitatorClient)
@@ -49,7 +64,7 @@ app.use(paymentMiddleware({
       scheme: "escrow" as const,
       network: networkId,
       price: "$0.01",
-      payTo: account.address,
+      payTo: MERCHANT_ADDRESS,
       extra: {
         escrowAddress: authCaptureEscrow,
         operatorAddress: ctx.operatorAddress,
@@ -64,7 +79,7 @@ app.use(paymentMiddleware({
       scheme: "escrow" as const,
       network: networkId,
       price: "$0.01",
-      payTo: account.address,
+      payTo: MERCHANT_ADDRESS,
       extra: {
         escrowAddress: authCaptureEscrow,
         operatorAddress: ctx.operatorAddress,
@@ -85,7 +100,7 @@ app.get("/garbage", (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`[merchant] Running on :${PORT} (EIP-712 receipts)`);
-  console.log(`[merchant] Pay to: ${account.address}, Operator: ${ctx.operatorAddress}`);
+  console.log(`[merchant] Running on :${PORT} (JWS receipts)`);
+  console.log(`[merchant] Pay to: ${MERCHANT_ADDRESS}, Operator: ${ctx.operatorAddress}`);
   console.log(`[merchant] Arbiter: ${ARBITER_URL}`);
 });

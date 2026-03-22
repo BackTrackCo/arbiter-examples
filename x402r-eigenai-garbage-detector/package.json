@@ -7,6 +7,7 @@
     "setup": "tsx --env-file=.env src/scripts/deploy-operator.ts",
     "arbiter": "tsx --env-file=.env src/arbiter.ts",
     "merchant": "tsx --env-file=.env src/merchant.ts",
+    "merchant:jws": "tsx --env-file=.env src/merchant-jws.ts",
     "client": "tsx --env-file=.env src/client.ts",
     "typecheck": "tsc --noEmit"
   },
