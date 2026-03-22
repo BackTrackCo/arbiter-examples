@@ -2,7 +2,6 @@ import type { Address } from 'viem'
 import { parseEventLogs } from 'viem'
 import type { X402r } from '@x402r/sdk'
 import { klerosCoreAbi } from '../kleros-contracts.js'
-import { deployToyArbitrable, toyArbitrableAbi } from './arbitrable.js'
 import {
   KlerosRuling,
   type KlerosActions,
@@ -26,11 +25,30 @@ const klerosRulerAbi = [
 ] as const
 
 // ---------------------------------------------------------------------------
-// Plugin factory — accepts Kleros config, handles ToyArbitrable lifecycle
+// DisputeResolverRuler ABI (subset we need)
+// ---------------------------------------------------------------------------
+
+const disputeResolverRulerAbi = [
+  {
+    inputs: [
+      { name: '_arbitratorExtraData', type: 'bytes' },
+      { name: '_disputeTemplate', type: 'string' },
+      { name: '_disputeTemplateDataMappings', type: 'string' },
+      { name: '_numberOfRulingOptions', type: 'uint256' },
+    ],
+    name: 'createDisputeForTemplate',
+    outputs: [{ name: 'disputeID', type: 'uint256' }],
+    stateMutability: 'payable',
+    type: 'function',
+  },
+] as const
+
+// ---------------------------------------------------------------------------
+// Plugin factory — accepts Kleros config, uses DisputeResolverRuler
 // ---------------------------------------------------------------------------
 
 export function klerosActions(config: KlerosConfig) {
-  let arbitrableAddress: Address | null = null
+  let rulingModeInitialized = false
 
   return (client: X402r): KlerosActions => ({
     kleros: {
@@ -66,24 +84,20 @@ export function klerosActions(config: KlerosConfig) {
           throw new Error('walletClient required for createDispute')
         }
 
-        // Deploy ToyArbitrable if not already deployed
-        if (!arbitrableAddress) {
-          console.log('  Deploying ToyArbitrable...')
-          arbitrableAddress = await deployToyArbitrable(walletClient, publicClient)
-          console.log(`  ToyArbitrable: ${arbitrableAddress}`)
-
-          // Initialize ruling mode — first caller becomes ruler
+        // Initialize ruling mode on first call — first caller becomes ruler
+        if (!rulingModeInitialized) {
           console.log('  Setting ruling mode to manual...')
           const { request: modeReq } = await publicClient.simulateContract({
             account: walletClient.account!,
             address: config.arbitrator,
             abi: klerosRulerAbi,
             functionName: 'changeRulingModeToManual',
-            args: [arbitrableAddress],
+            args: [config.disputeResolver],
           })
           const modeTx = await walletClient.writeContract(modeReq)
           await publicClient.waitForTransactionReceipt({ hash: modeTx })
           console.log(`  Ruling mode set (tx: ${modeTx})`)
+          rulingModeInitialized = true
         }
 
         // Get arbitration cost
@@ -94,13 +108,13 @@ export function klerosActions(config: KlerosConfig) {
           args: [config.extraData],
         })
 
-        // Create dispute through ToyArbitrable
+        // Create dispute through DisputeResolverRuler
         const { request } = await publicClient.simulateContract({
           account: walletClient.account!,
-          address: arbitrableAddress,
-          abi: toyArbitrableAbi,
-          functionName: 'createDispute',
-          args: [config.arbitrator, 2n, config.extraData], // 2 choices: PayerWins(1) or ReceiverWins(2)
+          address: config.disputeResolver,
+          abi: disputeResolverRulerAbi,
+          functionName: 'createDisputeForTemplate',
+          args: [config.extraData, '', '', 2n], // 2 ruling options: PayerWins(1) or ReceiverWins(2)
           value: arbCost,
         })
         const txHash = await walletClient.writeContract(request)
@@ -116,7 +130,7 @@ export function klerosActions(config: KlerosConfig) {
 
         return {
           disputeID: disputeEvent.args._disputeID,
-          arbitrableAddress,
+          arbitrableAddress: config.disputeResolver,
           txHash,
         }
       },
