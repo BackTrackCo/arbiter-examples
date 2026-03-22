@@ -50,7 +50,7 @@ async function main() {
     0n,
     {
       name: 'Service Not Delivered',
-      description: 'Paid 10 USDC for API access but received 500 errors on all requests.',
+      description: 'Paid for API access but received 500 errors on all requests.',
       fileURI: '/ipfs/QmFakeScreenshot',
     },
   )
