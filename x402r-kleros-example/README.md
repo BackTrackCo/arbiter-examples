@@ -22,7 +22,7 @@ Three systems work together: x402r (payment escrow), Kleros (dispute resolution)
 
 ### Flow
 
-1. **Merchant** authorizes a USDC payment via `PaymentOperator` -- funds are held in escrow
+1. **Payer** signs a USDC payment authorization -- merchant submits it to `PaymentOperator`, funds are held in escrow
 2. **Payer** calls `disputeRefund()` which does three things:
    - Requests a refund on `RefundRequest`
    - Pins evidence JSON to IPFS (via Pinata) and stores the CID on `RefundRequestEvidence`
