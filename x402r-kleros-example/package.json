@@ -4,10 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "setup": "tsx --env-file=.env src/scripts/setup.ts",
-    "client": "tsx --env-file=.env src/scripts/client.ts",
-    "arbiter": "tsx --env-file=.env src/scripts/arbiter.ts",
-    "deploy-ruler": "tsx --env-file=.env src/scripts/deploy-ruler.ts",
+    "build:contracts": "cd contracts && forge build",
+    "generate:abi": "tsx src/scripts/generate-abi.ts",
+    "build": "pnpm run build:contracts && pnpm run generate:abi",
+    "setup": "tsx --env-file=.env.payer src/scripts/setup.ts",
+    "client": "tsx --env-file=.env.payer src/scripts/client.ts",
+    "merchant": "tsx --env-file=.env.merchant src/scripts/merchant.ts",
+    "arbiter": "tsx --env-file=.env.arbiter src/scripts/arbiter.ts",
+    "deploy-ruler": "tsx --env-file=.env.payer src/scripts/deploy-ruler.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

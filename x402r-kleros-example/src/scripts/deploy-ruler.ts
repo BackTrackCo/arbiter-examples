@@ -50,9 +50,6 @@ async function main() {
   console.log(`   Implementation: ${implAddress}`)
 
   // --- 2. Encode initialize calldata ---
-  // initialize(address _governor, address _pinakion, uint256[4] _courtParameters)
-  // courtParameters: [minStake, alpha, feeForJuror, jurorsForCourtJump]
-  // Use small feeForJuror for testnet (0.0001 ETH = 100000000000000 wei)
   const initData = encodeFunctionData({
     abi: KlerosCoreRuler__factory.abi,
     functionName: 'initialize',
@@ -70,8 +67,6 @@ async function main() {
 
   // --- 3. Deploy ERC1967 proxy with initialize ---
   console.log('\n2. Deploying ERC1967 proxy + initializing...')
-  // Proxy constructor takes (address implementation, bytes data)
-  // Constructor args are ABI-encoded and appended to bytecode
   const { encodeAbiParameters } = await import('viem')
   const encodedArgs = encodeAbiParameters(
     [{ type: 'address' }, { type: 'bytes' }],
@@ -91,7 +86,6 @@ async function main() {
   // --- 4. Verify deployment ---
   console.log('\n3. Verifying...')
 
-  // Check arbitrationCost
   const extraData = '0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000003'
   const cost = await publicClient.readContract({
     address: proxyAddress,
@@ -101,10 +95,7 @@ async function main() {
   })
   console.log(`   Arbitration cost (3 jurors): ${cost} wei (${Number(cost) / 1e18} ETH)`)
 
-  // Verify changeRulingModeToManual selector exists
   const sel = keccak256(toHex('changeRulingModeToManual(address)')).slice(0, 10)
-  const code = await publicClient.getCode({ address: proxyAddress })
-  // Proxy delegates to impl, so we check impl
   const implCode = await publicClient.getCode({ address: implAddress })
   console.log(`   changeRulingModeToManual in impl: ${implCode!.includes(sel.slice(2))}`)
 

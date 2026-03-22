@@ -1,108 +1,92 @@
-# x402r + Kleros Arbitration Example
+# x402r-kleros-example
 
-Integrates [Kleros](https://kleros.io) decentralized arbitration with x402r refundable payments using the `.extend(klerosActions)` plugin pattern.
+Kleros dispute resolution for x402r refunds on Arbitrum Sepolia.
 
-## Quick Start
+## How it works
 
-```bash
-pnpm run setup              # deploy operator (one-time)
-pnpm run client             # pay, request refund, submit evidence, create dispute
-pnpm run arbiter 1          # review evidence, rule, execute (1=Refund, 2=No Refund)
+`ArbitrableX402r` is deployed as the arbiter on a marketplace operator. When a payer disputes, it creates a Kleros dispute. When jurors rule, the contract bridges the ruling to `RefundRequest.approve()` or `.deny()`.
+
+```
+Payer   -> kleros.request()   -> RefundRequest.request + ArbitrableX402r.createDispute
+Jurors  -> KlerosCore.rule()  -> ArbitrableX402r.rule() (stores ruling)
+Arbiter -> kleros.approve()   -> ArbitrableX402r.executeRuling -> RefundRequest.approve/deny
 ```
 
-## Architecture
+The contract splits `rule()` (stores) from `executeRuling()` (acts) so Kleros can't get stuck if the protocol call reverts. The plugin merges both into a single `approve()`/`deny()` call.
 
-Three systems work together: x402r (payment escrow), Kleros (dispute resolution), and IPFS (evidence storage).
-
-**x402r (on-chain)** -- USDC payment flows into `AuthCaptureEscrow`, managed by `PaymentOperator`. Conditions gate refunds: `EscrowPeriod` (time lock), `RefundRequest` (arbiter approve/deny), `RefundRequestEvidence` (on-chain CID storage).
-
-**Kleros (on-chain)** -- `KlerosCoreRuler` is a mock arbitrator for instant testnet rulings. `DisputeResolverRuler` creates disputes and receives `rule()` callbacks. In production, these would be `KlerosCore` with real juror voting.
-
-**IPFS (off-chain)** -- Evidence is structured JSON, pinned via Pinata, with CIDs stored on-chain in `RefundRequestEvidence`.
-
-### Flow
-
-1. **Payer** signs a USDC payment authorization -- merchant submits it to `PaymentOperator`, funds are held in escrow
-2. **Payer** calls `disputeRefund()` which does three things:
-   - Requests a refund on `RefundRequest`
-   - Pins evidence JSON to IPFS (via Pinata) and stores the CID on `RefundRequestEvidence`
-   - Creates a dispute on `KlerosCoreRuler` through `DisputeResolverRuler`
-3. **Merchant** submits counter-evidence (same IPFS + on-chain CID flow)
-4. **Arbiter** reviews evidence from IPFS, then calls `resolveDispute()` which:
-   - Gives a ruling on `KlerosCoreRuler` (PayerWins or ReceiverWins)
-   - Executes the ruling on x402r -- calls `RefundRequest.approve()` (releasing escrowed USDC back to payer) or `RefundRequest.deny()`
-
-## Prerequisites
-
-- Node.js 18+
-- Wallet with Arbitrum Sepolia ETH ([faucet](https://www.alchemy.com/faucets/arbitrum-sepolia)) and USDC ([Circle faucet](https://faucet.circle.com/) -- select Arbitrum Sepolia)
-- Free [Pinata](https://pinata.cloud) account for IPFS uploads
-
-```bash
-pnpm install
-cp .env.example .env
-# Fill in PRIVATE_KEY, ARBITRUM_SEPOLIA_RPC, PINATA_JWT
-```
-
-> **Note:** This example links to workspace `@x402r/core` and `@x402r/sdk` packages.
-> Run `pnpm build` in `x402r-sdk/` first if you haven't already.
-
-## The Plugin
-
-`.extend(klerosActions(config))` adds Kleros methods to any x402r client:
-
-```typescript
-import { klerosActions, KlerosRuling, createPinataUploader, pinataFetcher } from './kleros-plugin/index.js'
-
-const arbiter = createArbiterClient({ ... }).extend(
-  klerosActions({
-    arbitrator: KLEROS.klerosCoreRuler,
-    disputeResolver: KLEROS.disputeResolverRuler,
-    extraData: KLEROS.extraData,
-    ipfsUploader: createPinataUploader(jwt),
-    ipfsFetcher: pinataFetcher,
-  })
-)
-```
-
-| Method | Description |
-|--------|-------------|
-| **`disputeRefund(paymentInfo, amount, nonce, evidence)`** | Request refund + submit evidence + create Kleros dispute |
-| **`resolveDispute(disputeID, paymentInfo, nonce, ruling, amount)`** | Give Kleros ruling + execute on x402r |
-| `submitEvidence(paymentInfo, nonce, evidence)` | Pin evidence JSON to IPFS, store CID on-chain |
-| `getEvidence(paymentInfo, nonce)` | Read CIDs from chain, fetch from IPFS |
-| `getRuling(disputeID)` | Read current ruling from KlerosCoreRuler |
-
-## Scripts
-
-| Script | Purpose |
-|--------|---------|
-| `pnpm run setup` | Deploy PaymentOperator + conditions (one-time) |
-| `pnpm run client` | Authorize payment, then `disputeRefund()` + merchant counter-evidence |
-| `pnpm run arbiter [1\|2]` | Review evidence, then `resolveDispute()` + verify |
-| `pnpm run deploy-ruler` | Deploy KlerosCoreRuler + DisputeResolverRuler (infrastructure, already done) |
-
-## Limitations
-
-- **Workspace package links** -- `@x402r/core` and `@x402r/sdk` link to workspace source, not npm
-- **CJS workaround** -- `@kleros/kleros-v2-contracts` ships CJS in its ESM directory; we use `createRequire` (see `src/kleros-plugin/abi.ts`)
-- **Self-deployed Kleros** -- KlerosCoreRuler and DisputeResolverRuler are not on Arb Sepolia officially; the Ruler UI is hardcoded to Kleros's addresses. See `recommendations.md`
+Evidence is submitted to two channels: x402r's on-chain evidence contract (queryable via SDK) and `ArbitrableX402r` (emits ERC-1497 `Evidence` events for the Kleros juror UI). The plugin handles both in a single `submitEvidence()` call.
 
 ## Contracts
 
-### x402r (deployed per-operator via `pnpm run setup`)
-
-| Contract | Role |
-|----------|------|
-| PaymentOperator | Authorize, charge, refund payments |
-| EscrowPeriod | Time-lock condition on funds |
-| RefundRequest | Arbiter approve/deny refund requests |
-| RefundRequestEvidence | Store evidence CIDs on-chain |
-
-### Kleros (Arbitrum Sepolia -- self-deployed)
-
-| Contract | Address |
+| Contract | Purpose |
 |----------|---------|
-| KlerosCoreRuler (proxy) | `0x58d4348bb6aeab75d09483e407f348b8497d381a` |
-| KlerosCoreRuler (impl) | `0x64733ce909ab8735d982943cb69d01293b704a52` |
-| DisputeResolverRuler | `0x51e62414b8fbf5fe02390002d0530b08c1166302` |
+| `ProtocolArbitrable` | Abstract base — `rule()`, `submitEvidence()`, dispute storage |
+| `ArbitrableX402r` | x402r logic — `createDispute()` links to refund data, `executeRuling()` calls approve/deny |
+
+## Setup
+
+Requires: Node.js 18+, pnpm, Foundry, Arb Sepolia ETH + USDC, Pinata JWT.
+
+```bash
+pnpm install
+pnpm run build              # forge build + generate typed ABI
+
+# Create env files for each role (use the same key for demo, or different keys)
+cp .env.payer.example .env.payer
+cp .env.merchant.example .env.merchant
+cp .env.arbiter.example .env.arbiter
+# Edit each with PRIVATE_KEY, ARBITRUM_SEPOLIA_RPC, PINATA_JWT
+
+pnpm run setup              # deploy ArbitrableX402r + marketplace operator
+```
+
+## Usage
+
+```bash
+pnpm run client             # payer: sign auth + authorize + kleros.request()
+pnpm run merchant           # merchant: review evidence + counter-evidence
+pnpm run arbiter 1          # arbiter: approve (1) or deny (2)
+```
+
+Each script reads from its own `.env.<role>` file. For the demo, all three can use the same private key. For multi-wallet testing, put different keys in each file.
+
+## Plugin API
+
+```typescript
+const client = createPayerClient(config).extend(klerosActions(klerosConfig))
+
+// request refund + Kleros dispute + evidence
+await client.kleros.request(paymentInfo, amount, nonce, evidence?)
+
+// approve/deny — handles ruling (testnet) + execution in one call
+await client.kleros.approve(localDisputeID, arbitratorDisputeID, paymentInfo)
+await client.kleros.deny(localDisputeID, arbitratorDisputeID, paymentInfo)
+
+// dual-channel evidence (x402r + ArbitrableX402r for Kleros UI)
+await client.kleros.submitEvidence(paymentInfo, nonce, evidence, arbitratorDisputeID?)
+
+// reads
+await client.kleros.getEvidence(paymentInfo, nonce)
+await client.kleros.getRuling(arbitratorDisputeID)
+await client.kleros.getDispute(localDisputeID)
+```
+
+`KlerosConfig` takes optional `ipfsUploader`/`ipfsFetcher` — only needed for evidence operations.
+
+## Scripts
+
+| Script | What it does |
+|--------|-------------|
+| `build` | `forge build` + generate typed ABI from Foundry artifact |
+| `setup` | Deploy ArbitrableX402r, set Ruler to manual mode, deploy marketplace operator |
+| `client` | Sign + submit authorization, call `kleros.request()` |
+| `merchant` | Review evidence, submit counter-evidence |
+| `arbiter` | Review evidence, `kleros.approve()` or `kleros.deny()` |
+| `deploy-ruler` | Deploy KlerosCoreRuler (shared infra, rarely needed) |
+
+## Notes
+
+- **Testnet only** — uses KlerosCoreRuler (mock). On mainnet, jurors vote and `approve()`/`deny()` skip the ruling step automatically.
+- **ABI generation** — `pnpm run build` compiles contracts and generates `src/kleros-plugin/generated.ts` from the Foundry artifact. Re-run after contract changes.
+- **300s escrow** — real Kleros disputes take days. Production needs longer escrow or a freeze condition.
+- **`evm_version = "paris"`** — Arb Sepolia lacks PUSH0. Remove from `foundry.toml` for chains that support it.

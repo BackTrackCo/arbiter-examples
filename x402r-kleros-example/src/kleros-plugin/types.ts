@@ -25,7 +25,7 @@ export enum KlerosRuling {
 // IPFS helpers
 // ---------------------------------------------------------------------------
 
-export type IpfsUploader = (content: string) => Promise<string> // returns CID
+export type IpfsUploader = (content: unknown) => Promise<string> // returns CID
 export type IpfsFetcher = (cid: string) => Promise<string> // returns JSON string
 
 // ---------------------------------------------------------------------------
@@ -34,10 +34,10 @@ export type IpfsFetcher = (cid: string) => Promise<string> // returns JSON strin
 
 export interface KlerosConfig {
   arbitrator: Address // KlerosCoreRuler address
-  disputeResolver: Address // DisputeResolverRuler address (implements rule())
+  arbitrableX402r: Address // ArbitrableX402r address (IS the arbiter)
   extraData: Hex // abi.encode(uint96 courtId, uint256 minJurors)
-  ipfsUploader: IpfsUploader
-  ipfsFetcher: IpfsFetcher
+  ipfsUploader?: IpfsUploader // needed for request() and submitEvidence()
+  ipfsFetcher?: IpfsFetcher // needed for getEvidence()
 }
 
 // ---------------------------------------------------------------------------
@@ -45,74 +45,82 @@ export interface KlerosConfig {
 // ---------------------------------------------------------------------------
 
 export interface CreateDisputeResult {
-  disputeID: bigint
-  arbitrableAddress: Address
+  arbitratorDisputeID: bigint
+  localDisputeID: bigint
   txHash: Hash
 }
 
-export interface DisputeRefundResult {
+export interface RequestResult {
   requestTxHash: Hash
-  evidenceTxHash: Hash
   dispute: CreateDisputeResult
+  evidenceTxHash?: Hash
+  klerosEvidenceTxHash?: Hash
 }
 
-export interface ResolveDisputeResult {
-  rulingTxHash: Hash
-  executeTxHash: Hash | null
+export interface ResolveResult {
+  rulingTxHash: Hash | null // null if already ruled (mainnet)
+  executeTxHash: Hash
+}
+
+export interface EvidenceResult {
+  x402rTxHash: Hash
+  klerosTxHash?: Hash // only set when arbitratorDisputeID is provided
+}
+
+export interface X402rDisputeData {
+  refundRequest: Address
+  nonce: bigint
+  refundAmount: bigint
+  executed: boolean
 }
 
 // ---------------------------------------------------------------------------
-// Plugin actions
+// Plugin actions — mirrors SDK naming (request/approve/deny/submitEvidence/getEvidence)
+// Uses `type` (not `interface`) so it satisfies Record<string, unknown> for .extend()
 // ---------------------------------------------------------------------------
 
-export interface KlerosActions {
-  [key: string]: unknown
+export type KlerosActions = {
   kleros: {
-    /** Request refund + submit payer evidence + create Kleros dispute in one call. */
-    disputeRefund(
+    /** Request refund + create Kleros dispute + optional dual evidence. Mirrors refund.request(). */
+    request(
       paymentInfo: PaymentInfo,
       amount: bigint,
       nonce: bigint,
-      evidence: KlerosEvidence,
-    ): Promise<DisputeRefundResult>
+      evidence?: KlerosEvidence,
+    ): Promise<RequestResult>
 
-    /** Give Kleros ruling + execute on x402r in one call. */
-    resolveDispute(
-      disputeID: bigint,
+    /** Approve refund (PayerWins): give ruling + execute on x402r. Mirrors refund.approve(). */
+    approve(
+      localDisputeID: bigint,
+      arbitratorDisputeID: bigint,
       paymentInfo: PaymentInfo,
-      nonce: bigint,
-      ruling: KlerosRuling,
-      amount: bigint,
-    ): Promise<ResolveDisputeResult>
+    ): Promise<ResolveResult>
 
+    /** Deny refund (ReceiverWins): give ruling + execute on x402r. Mirrors refund.deny(). */
+    deny(
+      localDisputeID: bigint,
+      arbitratorDisputeID: bigint,
+      paymentInfo: PaymentInfo,
+    ): Promise<ResolveResult>
+
+    /** Dual-channel evidence: IPFS + x402r + ArbitrableX402r. Mirrors evidence.submit(). */
     submitEvidence(
       paymentInfo: PaymentInfo,
       nonce: bigint,
       evidence: KlerosEvidence,
-    ): Promise<Hash>
+      arbitratorDisputeID?: bigint,
+    ): Promise<EvidenceResult>
 
+    /** Fetch evidence from x402r + resolve CIDs from IPFS. Mirrors evidence.getBatch(). */
     getEvidence(
       paymentInfo: PaymentInfo,
       nonce: bigint,
     ): Promise<KlerosEvidence[]>
 
-    createDispute(
-      paymentInfo: PaymentInfo,
-      nonce: bigint,
-    ): Promise<CreateDisputeResult>
-
-    giveRuling(
-      disputeID: bigint,
-      ruling: KlerosRuling,
-    ): Promise<Hash>
-
+    /** Read current ruling from KlerosCore. */
     getRuling(disputeID: bigint): Promise<KlerosRuling>
 
-    executeRuling(
-      paymentInfo: PaymentInfo,
-      nonce: bigint,
-      ruling: KlerosRuling,
-      amount: bigint,
-    ): Promise<Hash | null>
+    /** Read x402r dispute data from ArbitrableX402r. */
+    getDispute(localDisputeID: bigint): Promise<X402rDisputeData>
   }
 }

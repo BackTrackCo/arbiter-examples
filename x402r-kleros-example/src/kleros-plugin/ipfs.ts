@@ -8,7 +8,7 @@ import type { IpfsFetcher, IpfsUploader } from './types.js'
 export function createPinataUploader(jwt: string): IpfsUploader {
   const pinata = new PinataClient({ pinataJWTKey: jwt })
   return async (content) => {
-    const { IpfsHash } = await pinata.pinJSONToIPFS(JSON.parse(content))
+    const { IpfsHash } = await pinata.pinJSONToIPFS(content)
     return IpfsHash
   }
 }

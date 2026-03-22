@@ -1,6 +1,12 @@
 node_modules/
 dist/
 .env
+.env.payer
+.env.merchant
+.env.arbiter
 context.json
 *.log
 .DS_Store
+contracts/out/
+contracts/cache/
+src/kleros-plugin/generated.ts

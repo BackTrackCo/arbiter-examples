@@ -1,10 +1,13 @@
 /**
- * All Kleros ABI fragments used by the plugin.
+ * All Kleros + ArbitrableX402r ABI fragments used by the plugin.
  *
  * klerosCoreAbi comes from @kleros/kleros-v2-contracts, which ships CJS in its
  * ESM entry point.  We load it via createRequire to work under "type": "module".
- * The Ruler-specific functions are not exported by the package at all, so we
- * declare those fragments manually.
+ * The Ruler-specific functions are not exported by the package, so we declare
+ * those fragments manually.
+ *
+ * arbitrableX402rAbi + bytecode are generated from the local Foundry build
+ * artifact by `pnpm run generate:abi` (see scripts/generate-abi.ts).
  */
 import { createRequire } from 'node:module'
 
@@ -49,20 +52,7 @@ export const klerosRulerExecuteAbi = [
 ] as const
 
 // ---------------------------------------------------------------------------
-// DisputeResolverRuler — subset we need
+// ArbitrableX402r — generated from Foundry artifact (do not edit manually)
 // ---------------------------------------------------------------------------
 
-export const disputeResolverRulerAbi = [
-  {
-    inputs: [
-      { name: '_arbitratorExtraData', type: 'bytes' },
-      { name: '_disputeTemplate', type: 'string' },
-      { name: '_disputeTemplateDataMappings', type: 'string' },
-      { name: '_numberOfRulingOptions', type: 'uint256' },
-    ],
-    name: 'createDisputeForTemplate',
-    outputs: [{ name: 'disputeID', type: 'uint256' }],
-    stateMutability: 'payable',
-    type: 'function',
-  },
-] as const
+export { arbitrableX402rAbi, arbitrableX402rBytecode } from './generated.js'

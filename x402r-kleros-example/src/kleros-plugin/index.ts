@@ -1,10 +1,10 @@
-import type { Address } from 'viem'
 import { parseEventLogs } from 'viem'
 import type { X402r } from '@x402r/sdk'
+import { ValidationError, type PaymentInfo } from '@x402r/core'
 import {
   klerosCoreAbi,
   klerosRulerExecuteAbi,
-  disputeResolverRulerAbi,
+  arbitrableX402rAbi,
 } from './abi.js'
 import {
   KlerosRuling,
@@ -12,148 +12,237 @@ import {
   type KlerosConfig,
   type KlerosEvidence,
   type CreateDisputeResult,
-  type DisputeRefundResult,
-  type ResolveDisputeResult,
+  type RequestResult,
+  type ResolveResult,
+  type EvidenceResult,
+  type X402rDisputeData,
 } from './types.js'
 
 // ---------------------------------------------------------------------------
-// Plugin factory — accepts Kleros config, uses DisputeResolverRuler
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+function requireAccount(client: X402r) {
+  const walletClient = client.config.walletClient
+  if (!walletClient) throw new ValidationError('walletClient required')
+  const account = walletClient.account
+  if (!account) throw new ValidationError('walletClient must have an account set')
+  return { walletClient, account, publicClient: client.config.publicClient }
+}
+
+async function createKlerosDispute(
+  client: X402r,
+  config: KlerosConfig,
+  paymentInfo: PaymentInfo,
+  nonce: bigint,
+  refundAmount: bigint,
+): Promise<CreateDisputeResult> {
+  const { walletClient, account, publicClient } = requireAccount(client)
+  const refundRequestAddress = client.config.refundRequestAddress!
+
+  const arbCost = await publicClient.readContract({
+    address: config.arbitrableX402r,
+    abi: arbitrableX402rAbi,
+    functionName: 'arbitrationCost',
+    args: [config.extraData],
+  })
+
+  const { request } = await publicClient.simulateContract({
+    account,
+    address: config.arbitrableX402r,
+    abi: arbitrableX402rAbi,
+    functionName: 'createDispute',
+    args: [refundRequestAddress, paymentInfo, nonce, refundAmount, config.extraData],
+    value: arbCost,
+  })
+  const txHash = await walletClient.writeContract(request)
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
+
+  const [disputeEvent] = parseEventLogs({
+    abi: arbitrableX402rAbi,
+    logs: receipt.logs,
+    eventName: 'DisputeCreated',
+  })
+  if (!disputeEvent) throw new Error('DisputeCreated event not found in receipt')
+
+  return {
+    arbitratorDisputeID: disputeEvent.args.arbitratorDisputeID,
+    localDisputeID: disputeEvent.args.localDisputeID,
+    txHash,
+  }
+}
+
+async function resolveDispute(
+  client: X402r,
+  config: KlerosConfig,
+  localDisputeID: bigint,
+  arbitratorDisputeID: bigint,
+  paymentInfo: PaymentInfo,
+  ruling: KlerosRuling,
+): Promise<ResolveResult> {
+  const { walletClient, account, publicClient } = requireAccount(client)
+
+  let rulingTxHash: ResolveResult['rulingTxHash'] = null
+
+  // Check if already ruled (mainnet: Kleros jurors decide, ruling already stored)
+  const dispute = await publicClient.readContract({
+    address: config.arbitrableX402r,
+    abi: arbitrableX402rAbi,
+    functionName: 'disputes',
+    args: [localDisputeID],
+  })
+
+  const [isRuled] = dispute
+  if (!isRuled) {
+    // Not yet ruled — give ruling via KlerosCoreRuler (testnet)
+    const { request } = await publicClient.simulateContract({
+      account,
+      address: config.arbitrator,
+      abi: klerosRulerExecuteAbi,
+      functionName: 'executeRuling',
+      args: [arbitratorDisputeID, BigInt(ruling), false, false],
+    })
+    rulingTxHash = await walletClient.writeContract(request)
+    await publicClient.waitForTransactionReceipt({ hash: rulingTxHash })
+  }
+
+  // Execute ruling on x402r (permissionless)
+  const { request: execReq } = await publicClient.simulateContract({
+    account,
+    address: config.arbitrableX402r,
+    abi: arbitrableX402rAbi,
+    functionName: 'executeRuling',
+    args: [localDisputeID, paymentInfo],
+  })
+  const executeTxHash = await walletClient.writeContract(execReq)
+  await publicClient.waitForTransactionReceipt({ hash: executeTxHash })
+
+  return { rulingTxHash, executeTxHash }
+}
+
+async function dualSubmitEvidence(
+  client: X402r,
+  config: KlerosConfig,
+  paymentInfo: PaymentInfo,
+  nonce: bigint,
+  evidence: KlerosEvidence,
+  arbitratorDisputeID?: bigint,
+): Promise<EvidenceResult> {
+  if (!config.ipfsUploader) throw new ValidationError('ipfsUploader required for submitEvidence — provide it in KlerosConfig')
+  const { walletClient, account } = requireAccount(client)
+
+  // Upload evidence to IPFS
+  const cid = await config.ipfsUploader(evidence)
+
+  // Submit to x402r RefundRequestEvidence
+  const x402rTxHash = await client.evidence!.submit(paymentInfo, nonce, cid)
+  // Wait between sequential txs from same wallet to avoid nonce conflicts
+  await client.config.publicClient.waitForTransactionReceipt({ hash: x402rTxHash })
+
+  // Submit to ArbitrableX402r (ERC-1497 Evidence event for Kleros UI)
+  let klerosTxHash: EvidenceResult['klerosTxHash'] | undefined
+  if (arbitratorDisputeID !== undefined) {
+    const { request } = await client.config.publicClient.simulateContract({
+      account,
+      address: config.arbitrableX402r,
+      abi: arbitrableX402rAbi,
+      functionName: 'submitEvidence',
+      args: [arbitratorDisputeID, `/ipfs/${cid}`],
+    })
+    klerosTxHash = await walletClient.writeContract(request)
+  }
+
+  return { x402rTxHash, klerosTxHash }
+}
+
+// ---------------------------------------------------------------------------
+// Plugin factory — mirrors SDK action names (request/approve/deny)
 // ---------------------------------------------------------------------------
 
 export function klerosActions(config: KlerosConfig) {
-  return (client: X402r): KlerosActions => ({
-    kleros: {
-      async disputeRefund(paymentInfo, amount, nonce, evidence): Promise<DisputeRefundResult> {
-        if (!client.refund) {
-          throw new Error('Refund module not available — provide refundRequestAddress')
-        }
-        const requestTxHash = await client.refund.request(paymentInfo, amount, nonce)
-        await client.config.publicClient.waitForTransactionReceipt({ hash: requestTxHash })
+  return (client: X402r): KlerosActions => {
+    // Validate SDK dependencies eagerly at extend() time
+    if (!client.refund) throw new ValidationError('klerosActions requires refundRequestAddress in X402rConfig')
+    if (!client.evidence) throw new ValidationError('klerosActions requires refundRequestEvidenceAddress in X402rConfig')
 
-        const evidenceTxHash = await this.submitEvidence(paymentInfo, nonce, evidence)
-        await client.config.publicClient.waitForTransactionReceipt({ hash: evidenceTxHash })
+    return {
+      kleros: {
+        async request(paymentInfo, amount, nonce, evidence): Promise<RequestResult> {
+          // 1. Request refund on x402r (uses SDK's refund.request)
+          const requestTxHash = await client.refund!.request(paymentInfo, amount, nonce)
+          await client.config.publicClient.waitForTransactionReceipt({ hash: requestTxHash })
 
-        const dispute = await this.createDispute(paymentInfo, nonce)
+          // 2. Create Kleros dispute on ArbitrableX402r
+          const dispute = await createKlerosDispute(client, config, paymentInfo, nonce, amount)
 
-        return { requestTxHash, evidenceTxHash, dispute }
+          // 3. Optional: submit dual evidence
+          const result: RequestResult = { requestTxHash, dispute }
+          if (evidence && config.ipfsUploader) {
+            const ev = await dualSubmitEvidence(client, config, paymentInfo, nonce, evidence, dispute.arbitratorDisputeID)
+            result.evidenceTxHash = ev.x402rTxHash
+            result.klerosEvidenceTxHash = ev.klerosTxHash
+          }
+
+          return result
+        },
+
+        async approve(localDisputeID, arbitratorDisputeID, paymentInfo): Promise<ResolveResult> {
+          return resolveDispute(client, config, localDisputeID, arbitratorDisputeID, paymentInfo, KlerosRuling.PayerWins)
+        },
+
+        async deny(localDisputeID, arbitratorDisputeID, paymentInfo): Promise<ResolveResult> {
+          return resolveDispute(client, config, localDisputeID, arbitratorDisputeID, paymentInfo, KlerosRuling.ReceiverWins)
+        },
+
+        async submitEvidence(paymentInfo, nonce, evidence, arbitratorDisputeID): Promise<EvidenceResult> {
+          return dualSubmitEvidence(client, config, paymentInfo, nonce, evidence, arbitratorDisputeID)
+        },
+
+        async getEvidence(paymentInfo, nonce): Promise<KlerosEvidence[]> {
+          if (!config.ipfsFetcher) throw new ValidationError('ipfsFetcher required for getEvidence — provide it in KlerosConfig')
+
+          const count = await client.evidence!.count(paymentInfo, nonce)
+          if (count === 0n) return []
+
+          const batch = await client.evidence!.getBatch(paymentInfo, nonce, 0n, count)
+          const results = await Promise.all(
+            batch.entries.map(async (entry) => {
+              const json = await config.ipfsFetcher!(entry.cid)
+              return JSON.parse(json) as KlerosEvidence
+            }),
+          )
+          return results
+        },
+
+        async getRuling(disputeID): Promise<KlerosRuling> {
+          const [ruling] = await client.config.publicClient.readContract({
+            address: config.arbitrator,
+            abi: klerosCoreAbi,
+            functionName: 'currentRuling',
+            args: [disputeID],
+          })
+          const value = Number(ruling)
+          if (!(value in KlerosRuling)) throw new Error(`Unknown ruling value: ${ruling}`)
+          return value as KlerosRuling
+        },
+
+        async getDispute(localDisputeID): Promise<X402rDisputeData> {
+          const result = await client.config.publicClient.readContract({
+            address: config.arbitrableX402r,
+            abi: arbitrableX402rAbi,
+            functionName: 'getX402rDispute',
+            args: [localDisputeID],
+          })
+          return {
+            refundRequest: result.refundRequest,
+            nonce: result.nonce,
+            refundAmount: result.refundAmount,
+            executed: result.executed,
+          }
+        },
       },
-
-      async resolveDispute(disputeID, paymentInfo, nonce, ruling, amount): Promise<ResolveDisputeResult> {
-        const rulingTxHash = await this.giveRuling(disputeID, ruling)
-        const executeTxHash = await this.executeRuling(paymentInfo, nonce, ruling, amount)
-        return { rulingTxHash, executeTxHash }
-      },
-
-      async submitEvidence(paymentInfo, nonce, evidence) {
-        if (!client.evidence) {
-          throw new Error('Evidence module not available — provide refundRequestEvidenceAddress')
-        }
-        const json = JSON.stringify(evidence)
-        const cid = await config.ipfsUploader(json)
-        return client.evidence.submit(paymentInfo, nonce, cid)
-      },
-
-      async getEvidence(paymentInfo, nonce) {
-        if (!client.evidence) {
-          throw new Error('Evidence module not available — provide refundRequestEvidenceAddress')
-        }
-        const count = await client.evidence.count(paymentInfo, nonce)
-        if (count === 0n) return []
-
-        const batch = await client.evidence.getBatch(paymentInfo, nonce, 0n, count)
-        const results: KlerosEvidence[] = []
-        for (const entry of batch.entries) {
-          const json = await config.ipfsFetcher(entry.cid)
-          results.push(JSON.parse(json) as KlerosEvidence)
-        }
-        return results
-      },
-
-      async createDispute(paymentInfo, nonce): Promise<CreateDisputeResult> {
-        const walletClient = client.config.walletClient
-        const publicClient = client.config.publicClient
-        if (!walletClient) {
-          throw new Error('walletClient required for createDispute')
-        }
-
-        // Get arbitration cost
-        const arbCost = await publicClient.readContract({
-          address: config.arbitrator,
-          abi: klerosCoreAbi,
-          functionName: 'arbitrationCost',
-          args: [config.extraData],
-        })
-
-        // Create dispute through DisputeResolverRuler
-        const { request } = await publicClient.simulateContract({
-          account: walletClient.account!,
-          address: config.disputeResolver,
-          abi: disputeResolverRulerAbi,
-          functionName: 'createDisputeForTemplate',
-          args: [config.extraData, '', '', 2n], // 2 ruling options: PayerWins(1) or ReceiverWins(2)
-          value: arbCost,
-        })
-        const txHash = await walletClient.writeContract(request)
-        const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
-
-        // Parse DisputeCreation event from KlerosCoreRuler logs
-        const [disputeEvent] = parseEventLogs({
-          abi: klerosCoreAbi,
-          logs: receipt.logs,
-          eventName: 'DisputeCreation',
-        })
-        if (!disputeEvent) throw new Error('DisputeCreation event not found in receipt')
-
-        return {
-          disputeID: disputeEvent.args._disputeID,
-          arbitrableAddress: config.disputeResolver,
-          txHash,
-        }
-      },
-
-      async giveRuling(disputeID, ruling) {
-        const walletClient = client.config.walletClient
-        const publicClient = client.config.publicClient
-        if (!walletClient) {
-          throw new Error('walletClient required for giveRuling')
-        }
-        const { request } = await publicClient.simulateContract({
-          account: walletClient.account!,
-          address: config.arbitrator,
-          abi: klerosRulerExecuteAbi,
-          functionName: 'executeRuling',
-          args: [disputeID, BigInt(ruling), false, false],
-        })
-        const hash = await walletClient.writeContract(request)
-        await publicClient.waitForTransactionReceipt({ hash })
-        return hash
-      },
-
-      async getRuling(disputeID): Promise<KlerosRuling> {
-        const [ruling] = await client.config.publicClient.readContract({
-          address: config.arbitrator,
-          abi: klerosCoreAbi,
-          functionName: 'currentRuling',
-          args: [disputeID],
-        })
-        return Number(ruling) as KlerosRuling
-      },
-
-      async executeRuling(paymentInfo, nonce, ruling, amount) {
-        if (!client.refund) {
-          throw new Error('Refund module not available — provide refundRequestAddress')
-        }
-        switch (ruling) {
-          case KlerosRuling.PayerWins:
-            return client.refund.approve(paymentInfo, nonce, amount)
-          case KlerosRuling.ReceiverWins:
-            return client.refund.deny(paymentInfo, nonce)
-          case KlerosRuling.RefusedToArbitrate:
-            return null
-        }
-      },
-    },
-  })
+    }
+  }
 }
 
 export { KlerosRuling } from './types.js'
@@ -162,8 +251,10 @@ export type {
   KlerosActions,
   KlerosConfig,
   CreateDisputeResult,
-  DisputeRefundResult,
-  ResolveDisputeResult,
+  RequestResult,
+  ResolveResult,
+  EvidenceResult,
+  X402rDisputeData,
   IpfsUploader,
   IpfsFetcher,
 } from './types.js'

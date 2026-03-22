@@ -12,8 +12,10 @@ import { createPinataUploader, pinataFetcher, type KlerosConfig } from '../klero
 // ---------------------------------------------------------------------------
 
 export function createClients() {
-  const privateKey = process.env.PRIVATE_KEY as `0x${string}`
-  if (!privateKey) throw new Error('PRIVATE_KEY env var required')
+  const raw = process.env.PRIVATE_KEY
+  if (!raw) throw new Error('PRIVATE_KEY env var required')
+  if (!raw.startsWith('0x')) throw new Error('PRIVATE_KEY must be 0x-prefixed hex')
+  const privateKey = raw as `0x${string}`
 
   const account = privateKeyToAccount(privateKey)
   const transport = http(ARBITRUM_SEPOLIA_RPC)
@@ -27,16 +29,23 @@ export function createClients() {
 // Kleros config
 // ---------------------------------------------------------------------------
 
-export function klerosConfig(): KlerosConfig {
-  if (!process.env.PINATA_JWT) throw new Error('PINATA_JWT env var required')
-
-  return {
+export function klerosConfig(
+  arbitrableX402rAddress: Address,
+  options?: { withIpfs?: boolean },
+): KlerosConfig {
+  const config: KlerosConfig = {
     arbitrator: KLEROS.klerosCoreRuler,
-    disputeResolver: KLEROS.disputeResolverRuler,
+    arbitrableX402r: arbitrableX402rAddress,
     extraData: KLEROS.extraData,
-    ipfsUploader: createPinataUploader(process.env.PINATA_JWT),
-    ipfsFetcher: pinataFetcher,
   }
+
+  if (options?.withIpfs !== false) {
+    if (!process.env.PINATA_JWT) throw new Error('PINATA_JWT env var required')
+    config.ipfsUploader = createPinataUploader(process.env.PINATA_JWT)
+    config.ipfsFetcher = pinataFetcher
+  }
+
+  return config
 }
 
 // ---------------------------------------------------------------------------
@@ -83,14 +92,15 @@ export function serializePaymentInfo(pi: PaymentInfo) {
 // Context loading
 // ---------------------------------------------------------------------------
 
-interface SavedContext {
+export interface SavedContext {
+  arbitrableX402rAddress: Address
   operatorAddress: Address
   escrowPeriodAddress: Address
   refundRequestAddress: Address
   refundRequestEvidenceAddress: Address
-  paymentInfo: PaymentInfo
-  arbitratorAddress?: Address
+  paymentInfo?: PaymentInfo
   arbitratorDisputeID?: string
+  localDisputeID?: string
 }
 
 interface RawPaymentInfo {
@@ -135,12 +145,13 @@ export function loadContext(): SavedContext {
   }
 
   return {
+    arbitrableX402rAddress: raw.arbitrableX402rAddress,
     operatorAddress: raw.operatorAddress,
     escrowPeriodAddress: raw.escrowPeriodAddress,
     refundRequestAddress: raw.refundRequestAddress,
     refundRequestEvidenceAddress: raw.refundRequestEvidenceAddress,
-    paymentInfo: paymentInfo!,
-    arbitratorAddress: raw.arbitratorAddress,
+    paymentInfo,
     arbitratorDisputeID: raw.arbitratorDisputeID,
+    localDisputeID: raw.localDisputeID,
   }
 }

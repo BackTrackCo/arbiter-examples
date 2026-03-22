@@ -8,7 +8,6 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import {
   CONTEXT_FILE,
   FAR_FUTURE,
-  KLEROS,
   PAYMENT_AMOUNT,
   USDC,
   CHAIN_ID,
@@ -17,15 +16,20 @@ import { klerosActions } from '../kleros-plugin/index.js'
 import { createClients, klerosConfig, x402rConfig, loadContext, serializePaymentInfo } from './shared.js'
 
 // ---------------------------------------------------------------------------
-// Client: Make payment, request refund, submit evidence, create dispute
+// Payer: Sign authorization, make payment, dispute refund
+//
+// 1. Payer signs authorization, merchant submits on-chain
+//    (same wallet in demo — in production these are separate parties)
+// 2. Payer calls kleros.request() — one SDK call that bundles:
+//    refund request + Kleros dispute + dual evidence
 // ---------------------------------------------------------------------------
 
 async function main() {
   const clients = createClients()
   const { account, publicClient } = clients
-  const addresses = loadContext()
-  const sdkConfig = x402rConfig(addresses, clients)
-  const kConfig = klerosConfig()
+  const ctx = loadContext()
+  const sdkConfig = x402rConfig(ctx, clients)
+  const kConfig = klerosConfig(ctx.arbitrableX402rAddress)
 
   // --- Check balance ---
   const usdcBalance = await publicClient.readContract({
@@ -39,9 +43,9 @@ async function main() {
     throw new Error('Insufficient USDC')
   }
 
-  // --- 1. Authorize payment ---
+  // --- 1. Payer signs authorization ---
   const paymentInfo: PaymentInfo = {
-    operator: addresses.operatorAddress,
+    operator: ctx.operatorAddress,
     payer: account.address,
     receiver: account.address,
     token: USDC,
@@ -51,11 +55,11 @@ async function main() {
     refundExpiry: FAR_FUTURE,
     minFeeBps: 0,
     maxFeeBps: 500,
-    feeReceiver: addresses.operatorAddress,
+    feeReceiver: ctx.operatorAddress,
     salt: BigInt(Date.now()),
   }
 
-  console.log('\n1. Authorizing payment...')
+  console.log('\n1. Payer signing authorization...')
   const { collectorData, tokenCollector } = await signReceiveAuthorization({
     account,
     chainId: CHAIN_ID,
@@ -63,7 +67,8 @@ async function main() {
     tokenName: 'USD Coin',
   })
 
-  const merchant = createMerchantClient(sdkConfig).extend(klerosActions(kConfig))
+  // Merchant submits the payer's signed authorization on-chain
+  const merchant = createMerchantClient(sdkConfig)
   const authTx = await merchant.payment.authorize(
     paymentInfo,
     PAYMENT_AMOUNT,
@@ -73,35 +78,31 @@ async function main() {
   await publicClient.waitForTransactionReceipt({ hash: authTx })
   console.log(`  tx: ${authTx}`)
 
-  // --- 2. Dispute refund (request + evidence + Kleros dispute) ---
-  console.log('\n2. Disputing refund...')
+  // --- 2. Payer disputes refund via kleros.request() ---
+  console.log('\n2. Payer disputing refund...')
   const payer = createPayerClient(sdkConfig).extend(klerosActions(kConfig))
-  const result = await payer.kleros.disputeRefund(paymentInfo, PAYMENT_AMOUNT, 0n, {
+  // nonce 0 = first refund request for this payment (increments per retry)
+  const result = await payer.kleros.request(paymentInfo, PAYMENT_AMOUNT, 0n, {
     name: 'Service Not Delivered',
     description: 'Paid for API access but received 500 errors on all requests.',
   })
-  console.log(`  Refund request tx: ${result.requestTxHash}`)
-  console.log(`  Evidence tx:       ${result.evidenceTxHash}`)
-  console.log(`  Dispute ID:        ${result.dispute.disputeID}`)
-  console.log(`  Dispute tx:        ${result.dispute.txHash}`)
-
-  // --- 3. Merchant submits counter-evidence ---
-  console.log('\n3. Merchant submitting counter-evidence...')
-  const merchantEvidenceTx = await merchant.kleros.submitEvidence(paymentInfo, 0n, {
-    name: 'Service Delivered',
-    description: 'API was operational. Attached server logs showing 200 responses.',
-  })
-  await publicClient.waitForTransactionReceipt({ hash: merchantEvidenceTx })
-  console.log(`  tx: ${merchantEvidenceTx}`)
+  console.log(`  Refund request tx:   ${result.requestTxHash}`)
+  console.log(`  Arbitrator dispute:  ${result.dispute.arbitratorDisputeID}`)
+  console.log(`  Local dispute:       ${result.dispute.localDisputeID}`)
+  console.log(`  Dispute tx:          ${result.dispute.txHash}`)
+  if (result.evidenceTxHash) {
+    console.log(`  x402r evidence tx:   ${result.evidenceTxHash}`)
+    console.log(`  Kleros evidence tx:  ${result.klerosEvidenceTxHash}`)
+  }
 
   // --- Save context ---
   const existing = JSON.parse(readFileSync(CONTEXT_FILE, 'utf-8'))
   existing.paymentInfo = serializePaymentInfo(paymentInfo)
-  existing.arbitratorAddress = KLEROS.klerosCoreRuler
-  existing.arbitratorDisputeID = result.dispute.disputeID.toString()
+  existing.arbitratorDisputeID = result.dispute.arbitratorDisputeID.toString()
+  existing.localDisputeID = result.dispute.localDisputeID.toString()
   writeFileSync(CONTEXT_FILE, JSON.stringify(existing, null, 2))
 
-  console.log('\nDone. Run: pnpm run arbiter 1')
+  console.log('\nDone. Run: pnpm run merchant')
 }
 
 main().catch((err) => {
