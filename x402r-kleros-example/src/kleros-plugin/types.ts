@@ -73,6 +73,11 @@ export interface KlerosActions {
       nonce: bigint,
     ): Promise<CreateDisputeResult>
 
+    giveKlerosRuling(
+      disputeID: bigint,
+      ruling: KlerosRuling,
+    ): Promise<Hash>
+
     getRuling(disputeID: bigint): Promise<KlerosRuling>
 
     executeRuling(

@@ -11,7 +11,6 @@ interface SavedContext {
   paymentInfo: PaymentInfo
   arbitratorAddress?: Address
   arbitratorDisputeID?: string
-  arbitrableAddress?: Address
 }
 
 interface RawPaymentInfo {
@@ -19,33 +18,27 @@ interface RawPaymentInfo {
   payer: Address
   receiver: Address
   token: Address
-  maxAmount: string // bigint serialized as string
-  preApprovalExpiry: number // uint48 → number
+  maxAmount: string
+  preApprovalExpiry: number
   authorizationExpiry: number
   refundExpiry: number
   minFeeBps: number
   maxFeeBps: number
   feeReceiver: Address
-  salt: string // bigint serialized as string
+  salt: string
 }
 
 export function loadContext(): SavedContext {
   if (!existsSync(CONTEXT_FILE)) {
-    throw new Error(`${CONTEXT_FILE} not found — run script 1 first (pnpm run setup)`)
+    throw new Error(`${CONTEXT_FILE} not found — run pnpm run setup first`)
   }
 
   const raw = JSON.parse(readFileSync(CONTEXT_FILE, 'utf-8'))
-  const pi = raw.paymentInfo as RawPaymentInfo
 
-  return {
-    operatorAddress: raw.operatorAddress,
-    escrowPeriodAddress: raw.escrowPeriodAddress,
-    refundRequestAddress: raw.refundRequestAddress,
-    refundRequestEvidenceAddress: raw.refundRequestEvidenceAddress,
-    arbitratorAddress: raw.arbitratorAddress,
-    arbitratorDisputeID: raw.arbitratorDisputeID,
-    arbitrableAddress: raw.arbitrableAddress,
-    paymentInfo: {
+  let paymentInfo: PaymentInfo | undefined
+  if (raw.paymentInfo) {
+    const pi = raw.paymentInfo as RawPaymentInfo
+    paymentInfo = {
       operator: pi.operator,
       payer: pi.payer,
       receiver: pi.receiver,
@@ -58,6 +51,16 @@ export function loadContext(): SavedContext {
       maxFeeBps: pi.maxFeeBps,
       feeReceiver: pi.feeReceiver,
       salt: BigInt(pi.salt),
-    },
+    }
+  }
+
+  return {
+    operatorAddress: raw.operatorAddress,
+    escrowPeriodAddress: raw.escrowPeriodAddress,
+    refundRequestAddress: raw.refundRequestAddress,
+    refundRequestEvidenceAddress: raw.refundRequestEvidenceAddress,
+    paymentInfo: paymentInfo!,
+    arbitratorAddress: raw.arbitratorAddress,
+    arbitratorDisputeID: raw.arbitratorDisputeID,
   }
 }
