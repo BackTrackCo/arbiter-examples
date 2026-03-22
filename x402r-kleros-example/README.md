@@ -38,7 +38,7 @@ await arbiter.kleros.deny(localDisputeID, arbitratorDisputeID, paymentInfo)
 
 ## Quick start
 
-Requires Node.js 18+, pnpm, Foundry. Wallet needs Arb Sepolia ETH and USDC (`0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d`). Evidence upload needs a [Pinata](https://pinata.cloud) JWT (free tier).
+Requires Node.js 18+, pnpm, Foundry. Wallet needs Arb Sepolia ETH and USDC. Evidence upload needs a [Pinata](https://pinata.cloud) JWT (free tier).
 
 ```bash
 pnpm install
