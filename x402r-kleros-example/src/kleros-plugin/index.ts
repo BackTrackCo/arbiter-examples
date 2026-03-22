@@ -24,6 +24,21 @@ const klerosRulerAbi = [
   },
 ] as const
 
+const klerosRulerExecuteAbi = [
+  {
+    inputs: [
+      { name: '_disputeID', type: 'uint256' },
+      { name: '_ruling', type: 'uint256' },
+      { name: 'tied', type: 'bool' },
+      { name: 'overridden', type: 'bool' },
+    ],
+    name: 'executeRuling',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+] as const
+
 // ---------------------------------------------------------------------------
 // DisputeResolverRuler ABI (subset we need)
 // ---------------------------------------------------------------------------
@@ -133,6 +148,24 @@ export function klerosActions(config: KlerosConfig) {
           arbitrableAddress: config.disputeResolver,
           txHash,
         }
+      },
+
+      async giveKlerosRuling(disputeID, ruling) {
+        const walletClient = client.config.walletClient
+        const publicClient = client.config.publicClient
+        if (!walletClient) {
+          throw new Error('walletClient required for giveKlerosRuling')
+        }
+        const { request } = await publicClient.simulateContract({
+          account: walletClient.account!,
+          address: config.arbitrator,
+          abi: klerosRulerExecuteAbi,
+          functionName: 'executeRuling',
+          args: [disputeID, BigInt(ruling), false, false],
+        })
+        const hash = await walletClient.writeContract(request)
+        await publicClient.waitForTransactionReceipt({ hash })
+        return hash
       },
 
       async getRuling(disputeID): Promise<KlerosRuling> {
