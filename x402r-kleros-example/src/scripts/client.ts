@@ -3,58 +3,29 @@ import {
   type PaymentInfo,
 } from '@x402r/core'
 import { createMerchantClient, createPayerClient } from '@x402r/sdk'
+import { erc20Abi } from 'viem'
+import { readFileSync, writeFileSync } from 'node:fs'
 import {
-  createPublicClient,
-  createWalletClient,
-  erc20Abi,
-  http,
-} from 'viem'
-import { privateKeyToAccount } from 'viem/accounts'
-import { arbitrumSepolia } from 'viem/chains'
-import { writeFileSync, readFileSync } from 'node:fs'
-import {
-  ARBITRUM_SEPOLIA_RPC,
-  CHAIN_ID,
   CONTEXT_FILE,
   FAR_FUTURE,
   KLEROS,
   PAYMENT_AMOUNT,
   USDC,
+  CHAIN_ID,
 } from '../config.js'
-import { klerosActions, createPinataUploader, pinataFetcher } from '../kleros-plugin/index.js'
-import { loadContext } from './shared.js'
+import { klerosActions } from '../kleros-plugin/index.js'
+import { createClients, klerosConfig, x402rConfig, loadContext, serializePaymentInfo } from './shared.js'
 
 // ---------------------------------------------------------------------------
 // Client: Make payment, request refund, submit evidence, create dispute
 // ---------------------------------------------------------------------------
 
-function serializePaymentInfo(pi: PaymentInfo) {
-  return {
-    operator: pi.operator,
-    payer: pi.payer,
-    receiver: pi.receiver,
-    token: pi.token,
-    maxAmount: pi.maxAmount.toString(),
-    preApprovalExpiry: pi.preApprovalExpiry,
-    authorizationExpiry: pi.authorizationExpiry,
-    refundExpiry: pi.refundExpiry,
-    minFeeBps: pi.minFeeBps,
-    maxFeeBps: pi.maxFeeBps,
-    feeReceiver: pi.feeReceiver,
-    salt: pi.salt.toString(),
-  }
-}
-
 async function main() {
-  const privateKey = process.env.PRIVATE_KEY as `0x${string}`
-  if (!privateKey) throw new Error('PRIVATE_KEY env var required')
-  if (!process.env.PINATA_JWT) throw new Error('PINATA_JWT env var required')
-
-  const { operatorAddress, escrowPeriodAddress, refundRequestAddress, refundRequestEvidenceAddress } = loadContext()
-  const account = privateKeyToAccount(privateKey)
-  const transport = http(ARBITRUM_SEPOLIA_RPC)
-  const publicClient = createPublicClient({ chain: arbitrumSepolia, transport })
-  const walletClient = createWalletClient({ account, chain: arbitrumSepolia, transport })
+  const clients = createClients()
+  const { account, publicClient } = clients
+  const addresses = loadContext()
+  const sdkConfig = x402rConfig(addresses, clients)
+  const kConfig = klerosConfig()
 
   // --- Check balance ---
   const usdcBalance = await publicClient.readContract({
@@ -68,27 +39,9 @@ async function main() {
     throw new Error('Insufficient USDC')
   }
 
-  const clientConfig = {
-    publicClient,
-    walletClient,
-    operatorAddress,
-    chainId: CHAIN_ID,
-    escrowPeriodAddress,
-    refundRequestAddress,
-    refundRequestEvidenceAddress,
-  }
-
-  const klerosConfig = {
-    arbitrator: KLEROS.klerosCoreRuler,
-    disputeResolver: KLEROS.disputeResolverRuler,
-    extraData: KLEROS.extraData,
-    ipfsUploader: createPinataUploader(process.env.PINATA_JWT!),
-    ipfsFetcher: pinataFetcher,
-  }
-
   // --- 1. Authorize payment ---
   const paymentInfo: PaymentInfo = {
-    operator: operatorAddress,
+    operator: addresses.operatorAddress,
     payer: account.address,
     receiver: account.address,
     token: USDC,
@@ -98,7 +51,7 @@ async function main() {
     refundExpiry: FAR_FUTURE,
     minFeeBps: 0,
     maxFeeBps: 500,
-    feeReceiver: operatorAddress,
+    feeReceiver: addresses.operatorAddress,
     salt: BigInt(Date.now()),
   }
 
@@ -110,7 +63,7 @@ async function main() {
     tokenName: 'USD Coin',
   })
 
-  const merchant = createMerchantClient(clientConfig).extend(klerosActions(klerosConfig))
+  const merchant = createMerchantClient(sdkConfig).extend(klerosActions(kConfig))
   const authTx = await merchant.payment.authorize(
     paymentInfo,
     PAYMENT_AMOUNT,
@@ -120,40 +73,32 @@ async function main() {
   await publicClient.waitForTransactionReceipt({ hash: authTx })
   console.log(`  tx: ${authTx}`)
 
-  // --- 2. Request refund ---
-  console.log('\n2. Requesting refund...')
-  const payer = createPayerClient(clientConfig).extend(klerosActions(klerosConfig))
-  const requestTx = await payer.refund!.request(paymentInfo, PAYMENT_AMOUNT, 0n)
-  await publicClient.waitForTransactionReceipt({ hash: requestTx })
-  console.log(`  tx: ${requestTx}`)
-
-  // --- 3. Submit evidence ---
-  console.log('\n3. Submitting evidence...')
-  const payerEvidenceTx = await payer.kleros.submitEvidence(paymentInfo, 0n, {
+  // --- 2. Dispute refund (request + evidence + Kleros dispute) ---
+  console.log('\n2. Disputing refund...')
+  const payer = createPayerClient(sdkConfig).extend(klerosActions(kConfig))
+  const result = await payer.kleros.disputeRefund(paymentInfo, PAYMENT_AMOUNT, 0n, {
     name: 'Service Not Delivered',
     description: 'Paid for API access but received 500 errors on all requests.',
   })
-  await publicClient.waitForTransactionReceipt({ hash: payerEvidenceTx })
-  console.log(`  Payer evidence tx: ${payerEvidenceTx}`)
+  console.log(`  Refund request tx: ${result.requestTxHash}`)
+  console.log(`  Evidence tx:       ${result.evidenceTxHash}`)
+  console.log(`  Dispute ID:        ${result.dispute.disputeID}`)
+  console.log(`  Dispute tx:        ${result.dispute.txHash}`)
 
+  // --- 3. Merchant submits counter-evidence ---
+  console.log('\n3. Merchant submitting counter-evidence...')
   const merchantEvidenceTx = await merchant.kleros.submitEvidence(paymentInfo, 0n, {
     name: 'Service Delivered',
     description: 'API was operational. Attached server logs showing 200 responses.',
   })
   await publicClient.waitForTransactionReceipt({ hash: merchantEvidenceTx })
-  console.log(`  Merchant evidence tx: ${merchantEvidenceTx}`)
-
-  // --- 4. Create Kleros dispute ---
-  console.log('\n4. Creating Kleros dispute...')
-  const dispute = await payer.kleros.createDispute(paymentInfo, 0n)
-  console.log(`  Dispute ID: ${dispute.disputeID}`)
-  console.log(`  tx: ${dispute.txHash}`)
+  console.log(`  tx: ${merchantEvidenceTx}`)
 
   // --- Save context ---
   const existing = JSON.parse(readFileSync(CONTEXT_FILE, 'utf-8'))
   existing.paymentInfo = serializePaymentInfo(paymentInfo)
   existing.arbitratorAddress = KLEROS.klerosCoreRuler
-  existing.arbitratorDisputeID = dispute.disputeID.toString()
+  existing.arbitratorDisputeID = result.dispute.disputeID.toString()
   writeFileSync(CONTEXT_FILE, JSON.stringify(existing, null, 2))
 
   console.log('\nDone. Run: pnpm run arbiter 1')

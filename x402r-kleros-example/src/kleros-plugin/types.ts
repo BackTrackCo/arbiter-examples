@@ -50,6 +50,17 @@ export interface CreateDisputeResult {
   txHash: Hash
 }
 
+export interface DisputeRefundResult {
+  requestTxHash: Hash
+  evidenceTxHash: Hash
+  dispute: CreateDisputeResult
+}
+
+export interface ResolveDisputeResult {
+  rulingTxHash: Hash
+  executeTxHash: Hash | null
+}
+
 // ---------------------------------------------------------------------------
 // Plugin actions
 // ---------------------------------------------------------------------------
@@ -57,6 +68,23 @@ export interface CreateDisputeResult {
 export interface KlerosActions {
   [key: string]: unknown
   kleros: {
+    /** Request refund + submit payer evidence + create Kleros dispute in one call. */
+    disputeRefund(
+      paymentInfo: PaymentInfo,
+      amount: bigint,
+      nonce: bigint,
+      evidence: KlerosEvidence,
+    ): Promise<DisputeRefundResult>
+
+    /** Give Kleros ruling + execute on x402r in one call. */
+    resolveDispute(
+      disputeID: bigint,
+      paymentInfo: PaymentInfo,
+      nonce: bigint,
+      ruling: KlerosRuling,
+      amount: bigint,
+    ): Promise<ResolveDisputeResult>
+
     submitEvidence(
       paymentInfo: PaymentInfo,
       nonce: bigint,
@@ -73,7 +101,7 @@ export interface KlerosActions {
       nonce: bigint,
     ): Promise<CreateDisputeResult>
 
-    giveKlerosRuling(
+    giveRuling(
       disputeID: bigint,
       ruling: KlerosRuling,
     ): Promise<Hash>
@@ -84,7 +112,7 @@ export interface KlerosActions {
       paymentInfo: PaymentInfo,
       nonce: bigint,
       ruling: KlerosRuling,
-      amount?: bigint,
+      amount: bigint,
     ): Promise<Hash | null>
   }
 }
