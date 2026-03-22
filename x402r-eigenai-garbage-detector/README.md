@@ -19,12 +19,12 @@ Three systems work together: x402r (payment escrow), EigenAI (content evaluation
 
 **EigenAI (off-chain)** -- Deterministic LLM inference with a locked seed. The arbiter evaluates HTTP response bodies against a garbage detection prompt. A keccak256 commitment hash (prompt + response + seed) makes every evaluation verifiable -- anyone can replay the same inputs and get the same verdict.
 
-**x402 middleware (HTTP)** -- `onAfterSettle` hook forwards the response body to the arbiter after each successful settlement. Fire-and-forget -- does not block the client response.
+**x402 middleware (HTTP)** -- `onAfterSettle` hook forwards the response body to the arbiter after each successful settlement. Fire-and-forget -- does not block the client response. Merchant also signs EIP-712 receipts (offer-receipt extension) so clients have cryptographic proof of what was delivered.
 
 ### Flow
 
 1. **Client** sends a paid request through x402 middleware -- `wrapFetchWithPayment` handles the 402 → sign → retry flow
-2. **Merchant** serves the response, x402 settles the escrow payment via facilitator
+2. **Merchant** serves the response, x402 settles the escrow payment via facilitator, signs an EIP-712 receipt (delivery proof)
 3. **Hook** fires `forwardToArbiter()` which POSTs the response body to the arbiter (async, fire-and-forget)
 4. **Arbiter** evaluates the response via EigenAI:
    - **PASS** -- calls `sdk.garbageDetector.release(paymentInfo)` to release escrowed funds to merchant

@@ -14,6 +14,7 @@
     "@x402/core": "^2.3.0",
     "@x402/evm": "^2.3.0",
     "@x402/express": "^2.3.0",
+    "@x402/extensions": "^2.3.0",
     "@x402/fetch": "^2.7.0",
     "@x402r/core": "link:../../x402r-sdk/packages/core",
     "@x402r/evm": "^0.0.2",
