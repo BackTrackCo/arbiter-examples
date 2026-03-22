@@ -1,30 +1,14 @@
 import { deployMarketplaceOperator } from '@x402r/core'
-import {
-  createPublicClient,
-  createWalletClient,
-  http,
-} from 'viem'
-import { privateKeyToAccount } from 'viem/accounts'
-import { arbitrumSepolia } from 'viem/chains'
 import { writeFileSync } from 'node:fs'
-import {
-  ARBITRUM_SEPOLIA_RPC,
-  CHAIN_ID,
-  CONTEXT_FILE,
-} from '../config.js'
+import { CHAIN_ID, CONTEXT_FILE } from '../config.js'
+import { createClients } from './shared.js'
 
 // ---------------------------------------------------------------------------
 // Setup: Deploy marketplace operator (one-time)
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const privateKey = process.env.PRIVATE_KEY as `0x${string}`
-  if (!privateKey) throw new Error('PRIVATE_KEY env var required')
-
-  const account = privateKeyToAccount(privateKey)
-  const transport = http(ARBITRUM_SEPOLIA_RPC)
-  const publicClient = createPublicClient({ chain: arbitrumSepolia, transport })
-  const walletClient = createWalletClient({ account, chain: arbitrumSepolia, transport })
+  const { account, publicClient, walletClient } = createClients()
 
   console.log(`Wallet: ${account.address}`)
   console.log(`Chain:  Arbitrum Sepolia (${CHAIN_ID})`)

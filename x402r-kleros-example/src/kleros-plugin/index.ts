@@ -1,72 +1,49 @@
 import type { Address } from 'viem'
 import { parseEventLogs } from 'viem'
 import type { X402r } from '@x402r/sdk'
-import { klerosCoreAbi } from '../kleros-contracts.js'
+import {
+  klerosCoreAbi,
+  klerosRulerExecuteAbi,
+  disputeResolverRulerAbi,
+} from './abi.js'
 import {
   KlerosRuling,
   type KlerosActions,
   type KlerosConfig,
   type KlerosEvidence,
   type CreateDisputeResult,
+  type DisputeRefundResult,
+  type ResolveDisputeResult,
 } from './types.js'
-
-// ---------------------------------------------------------------------------
-// KlerosCoreRuler-specific ABI (not in @kleros/kleros-v2-contracts viem export)
-// ---------------------------------------------------------------------------
-
-const klerosRulerAbi = [
-  {
-    inputs: [{ name: '_arbitrable', type: 'address' }],
-    name: 'changeRulingModeToManual',
-    outputs: [],
-    stateMutability: 'nonpayable',
-    type: 'function',
-  },
-] as const
-
-const klerosRulerExecuteAbi = [
-  {
-    inputs: [
-      { name: '_disputeID', type: 'uint256' },
-      { name: '_ruling', type: 'uint256' },
-      { name: 'tied', type: 'bool' },
-      { name: 'overridden', type: 'bool' },
-    ],
-    name: 'executeRuling',
-    outputs: [],
-    stateMutability: 'nonpayable',
-    type: 'function',
-  },
-] as const
-
-// ---------------------------------------------------------------------------
-// DisputeResolverRuler ABI (subset we need)
-// ---------------------------------------------------------------------------
-
-const disputeResolverRulerAbi = [
-  {
-    inputs: [
-      { name: '_arbitratorExtraData', type: 'bytes' },
-      { name: '_disputeTemplate', type: 'string' },
-      { name: '_disputeTemplateDataMappings', type: 'string' },
-      { name: '_numberOfRulingOptions', type: 'uint256' },
-    ],
-    name: 'createDisputeForTemplate',
-    outputs: [{ name: 'disputeID', type: 'uint256' }],
-    stateMutability: 'payable',
-    type: 'function',
-  },
-] as const
 
 // ---------------------------------------------------------------------------
 // Plugin factory — accepts Kleros config, uses DisputeResolverRuler
 // ---------------------------------------------------------------------------
 
 export function klerosActions(config: KlerosConfig) {
-  let rulingModeInitialized = false
-
   return (client: X402r): KlerosActions => ({
     kleros: {
+      async disputeRefund(paymentInfo, amount, nonce, evidence): Promise<DisputeRefundResult> {
+        if (!client.refund) {
+          throw new Error('Refund module not available — provide refundRequestAddress')
+        }
+        const requestTxHash = await client.refund.request(paymentInfo, amount, nonce)
+        await client.config.publicClient.waitForTransactionReceipt({ hash: requestTxHash })
+
+        const evidenceTxHash = await this.submitEvidence(paymentInfo, nonce, evidence)
+        await client.config.publicClient.waitForTransactionReceipt({ hash: evidenceTxHash })
+
+        const dispute = await this.createDispute(paymentInfo, nonce)
+
+        return { requestTxHash, evidenceTxHash, dispute }
+      },
+
+      async resolveDispute(disputeID, paymentInfo, nonce, ruling, amount): Promise<ResolveDisputeResult> {
+        const rulingTxHash = await this.giveRuling(disputeID, ruling)
+        const executeTxHash = await this.executeRuling(paymentInfo, nonce, ruling, amount)
+        return { rulingTxHash, executeTxHash }
+      },
+
       async submitEvidence(paymentInfo, nonce, evidence) {
         if (!client.evidence) {
           throw new Error('Evidence module not available — provide refundRequestEvidenceAddress')
@@ -97,22 +74,6 @@ export function klerosActions(config: KlerosConfig) {
         const publicClient = client.config.publicClient
         if (!walletClient) {
           throw new Error('walletClient required for createDispute')
-        }
-
-        // Initialize ruling mode on first call — first caller becomes ruler
-        if (!rulingModeInitialized) {
-          console.log('  Setting ruling mode to manual...')
-          const { request: modeReq } = await publicClient.simulateContract({
-            account: walletClient.account!,
-            address: config.arbitrator,
-            abi: klerosRulerAbi,
-            functionName: 'changeRulingModeToManual',
-            args: [config.disputeResolver],
-          })
-          const modeTx = await walletClient.writeContract(modeReq)
-          await publicClient.waitForTransactionReceipt({ hash: modeTx })
-          console.log(`  Ruling mode set (tx: ${modeTx})`)
-          rulingModeInitialized = true
         }
 
         // Get arbitration cost
@@ -150,11 +111,11 @@ export function klerosActions(config: KlerosConfig) {
         }
       },
 
-      async giveKlerosRuling(disputeID, ruling) {
+      async giveRuling(disputeID, ruling) {
         const walletClient = client.config.walletClient
         const publicClient = client.config.publicClient
         if (!walletClient) {
-          throw new Error('walletClient required for giveKlerosRuling')
+          throw new Error('walletClient required for giveRuling')
         }
         const { request } = await publicClient.simulateContract({
           account: walletClient.account!,
@@ -184,7 +145,7 @@ export function klerosActions(config: KlerosConfig) {
         }
         switch (ruling) {
           case KlerosRuling.PayerWins:
-            return client.refund.approve(paymentInfo, nonce, amount ?? 0n)
+            return client.refund.approve(paymentInfo, nonce, amount)
           case KlerosRuling.ReceiverWins:
             return client.refund.deny(paymentInfo, nonce)
           case KlerosRuling.RefusedToArbitrate:
@@ -201,6 +162,8 @@ export type {
   KlerosActions,
   KlerosConfig,
   CreateDisputeResult,
+  DisputeRefundResult,
+  ResolveDisputeResult,
   IpfsUploader,
   IpfsFetcher,
 } from './types.js'
