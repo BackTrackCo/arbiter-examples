@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "setup": "tsx --env-file=.env src/scripts/1-setup-dispute.ts",
-    "evidence": "tsx --env-file=.env src/scripts/2-submit-evidence.ts",
-    "bridge": "tsx --env-file=.env src/scripts/3-bridge-to-kleros.ts",
-    "ruling": "tsx --env-file=.env src/scripts/4-execute-ruling.ts",
+    "setup": "tsx --env-file=.env src/scripts/setup.ts",
+    "client": "tsx --env-file=.env src/scripts/client.ts",
+    "arbiter": "tsx --env-file=.env src/scripts/arbiter.ts",
+    "deploy-ruler": "tsx --env-file=.env src/scripts/deploy-ruler.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
