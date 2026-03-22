@@ -14,7 +14,7 @@ Arbiter -> kleros.approve()   -> ArbitrableX402r.executeRuling -> RefundRequest.
 
 The contract splits `rule()` (stores) from `executeRuling()` (acts) so Kleros can't get stuck if the protocol call reverts. The plugin merges both into a single `approve()`/`deny()` call.
 
-Evidence is submitted to two channels: x402r's on-chain evidence contract (queryable via SDK) and `ArbitrableX402r` (emits ERC-1497 `Evidence` events for the Kleros juror UI). The plugin handles both in a single `submitEvidence()` call.
+Evidence is uploaded to IPFS once, then the CID is submitted to two contracts: x402r's `RefundRequestEvidence` (queryable via SDK's `evidence.getBatch()`) and `ArbitrableX402r` (emits ERC-1497 `Evidence` events for the Kleros juror UI). The plugin handles both in a single `submitEvidence()` call.
 
 ## Contracts
 
