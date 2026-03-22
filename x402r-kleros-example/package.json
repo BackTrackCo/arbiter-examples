@@ -7,7 +7,9 @@
     "setup": "tsx --env-file=.env src/scripts/1-setup-dispute.ts",
     "evidence": "tsx --env-file=.env src/scripts/2-submit-evidence.ts",
     "dispute": "tsx --env-file=.env src/scripts/3-create-dispute.ts",
+    "give-ruling": "tsx --env-file=.env src/scripts/3b-give-ruling.ts",
     "ruling": "tsx --env-file=.env src/scripts/4-execute-ruling.ts",
+    "deploy-ruler": "tsx --env-file=.env src/scripts/deploy-ruler.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

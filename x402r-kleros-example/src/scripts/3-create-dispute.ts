@@ -70,18 +70,11 @@ async function main() {
   existing.arbitrableAddress = dispute.arbitrableAddress
   writeFileSync(CONTEXT_FILE, JSON.stringify(existing, null, 2))
 
-  console.log(`\n=== Next steps: Give a ruling via the Ruler UI ===`)
-  console.log(`1. Go to: https://dev--kleros-v2-testnet-devtools.netlify.app/ruler`)
-  console.log(`2. Connect wallet to Arbitrum Sepolia`)
-  console.log(`3. Enter Arbitrable address: ${dispute.arbitrableAddress}`)
-  console.log(`4. Set ruling mode to "Manual" → click "Update"`)
-  console.log(`   (This was already done by the plugin — you should see "Manual" is active)`)
-  console.log(`5. Under "Manual Ruling":`)
-  console.log(`   - Dispute ID: ${dispute.disputeID}`)
-  console.log(`   - Ruling: 1 (Payer Wins / Refund) or 2 (Receiver Wins / No Refund)`)
-  console.log(`   - Tie: unchecked`)
-  console.log(`   - Overridden: unchecked`)
-  console.log(`6. Click "Rule", confirm tx, then run: pnpm run ruling`)
+  console.log(`\n=== Next steps ===`)
+  console.log(`Give a ruling (1 = Payer Wins, 2 = Receiver Wins):`)
+  console.log(`  pnpm run give-ruling 1`)
+  console.log(`Then execute it on x402r:`)
+  console.log(`  pnpm run ruling`)
 }
 
 main().catch((err) => {
