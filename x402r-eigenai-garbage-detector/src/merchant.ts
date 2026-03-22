@@ -3,7 +3,7 @@ import cors from "cors";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { EscrowServerScheme } from "@x402r/evm/escrow/server";
-import { refundable } from "@x402r/helpers";
+import { getChainConfig } from "@x402r/sdk";
 import { forwardToArbiter } from "./hook.js";
 import { CHAIN_ID } from "./config.js";
 import { createClients, loadContext } from "./scripts/shared.js";
@@ -22,6 +22,7 @@ const ARBITER_URL = process.env.ARBITER_URL ?? "http://localhost:3001";
 const networkId = `eip155:${CHAIN_ID}` as const;
 
 const ctx = loadContext();
+const { authCaptureEscrow, tokenCollector } = getChainConfig(CHAIN_ID);
 
 const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
 const resourceServer = new x402ResourceServer(facilitatorClient)
@@ -33,10 +34,36 @@ app.use(cors());
 
 app.use(paymentMiddleware({
   "GET /weather": {
-    accepts: [refundable({ scheme: "escrow", price: "$0.01", network: networkId, payTo: account.address }, ctx.operatorAddress)],
+    accepts: [{
+      scheme: "escrow" as const,
+      network: networkId,
+      price: "$0.01",
+      payTo: account.address,
+      extra: {
+        escrowAddress: authCaptureEscrow,
+        operatorAddress: ctx.operatorAddress,
+        tokenCollector,
+        feeReceiver: ctx.operatorAddress,
+        minFeeBps: 0,
+        maxFeeBps: 500,
+      },
+    }],
   },
   "GET /garbage": {
-    accepts: [refundable({ scheme: "escrow", price: "$0.01", network: networkId, payTo: account.address }, ctx.operatorAddress)],
+    accepts: [{
+      scheme: "escrow" as const,
+      network: networkId,
+      price: "$0.01",
+      payTo: account.address,
+      extra: {
+        escrowAddress: authCaptureEscrow,
+        operatorAddress: ctx.operatorAddress,
+        tokenCollector,
+        feeReceiver: ctx.operatorAddress,
+        minFeeBps: 0,
+        maxFeeBps: 500,
+      },
+    }],
   },
 }, resourceServer));
 
