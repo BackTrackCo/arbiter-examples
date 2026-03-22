@@ -25,13 +25,13 @@ struct PaymentInfo {
 interface IRefundRequest {
     function approve(PaymentInfo calldata paymentInfo, uint256 nonce, uint120 amount) external;
     function deny(PaymentInfo calldata paymentInfo, uint256 nonce) external;
+    function refuse(PaymentInfo calldata paymentInfo, uint256 nonce) external;
 }
 
 // ---------------------------------------------------------------------------
 // ArbitrableX402r — bridges Kleros rulings to x402r RefundRequest
 //
 // Extends ProtocolArbitrable with x402r-specific dispute data and execution.
-// ~30 lines of protocol logic on top of the base contract.
 // ---------------------------------------------------------------------------
 
 contract ArbitrableX402r is ProtocolArbitrable {
@@ -120,8 +120,10 @@ contract ArbitrableX402r is ProtocolArbitrable {
         } else if (ruling == 2) {
             // ReceiverWins — deny refund
             IRefundRequest(x.refundRequest).deny(_paymentInfo, x.nonce);
+        } else {
+            // RefusedToArbitrate (ruling == 0) — mark as refused on x402r
+            IRefundRequest(x.refundRequest).refuse(_paymentInfo, x.nonce);
         }
-        // ruling == 0 (RefusedToArbitrate) — no-op
 
         emit RulingExecuted(_localDisputeID, ruling);
     }

@@ -8,6 +8,9 @@
  *
  * arbitrableX402rAbi + bytecode are generated from the local Foundry build
  * artifact by `pnpm run generate:abi` (see scripts/generate-abi.ts).
+ *
+ * Evidence events use a JSON format with {name, description, fileURI?}.
+ * fileURI points to an IPFS CID (optional attachment).
  */
 import { createRequire } from 'node:module'
 

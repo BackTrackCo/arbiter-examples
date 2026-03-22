@@ -16,6 +16,10 @@ interface IArbitratorV2 {
     function currentRuling(uint256 _disputeID) external view returns (uint256 ruling, bool tied, bool overridden);
 }
 
+interface IArbitrableV2 {
+    function rule(uint256 _arbitratorDisputeID, uint256 _ruling) external;
+}
+
 // ---------------------------------------------------------------------------
 // ProtocolArbitrable — base contract for Kleros-integrated protocols
 //
@@ -23,7 +27,7 @@ interface IArbitratorV2 {
 // logic. Subclasses add executeRuling() to bridge rulings into their protocol.
 // ---------------------------------------------------------------------------
 
-abstract contract ProtocolArbitrable {
+abstract contract ProtocolArbitrable is IArbitrableV2 {
     // ── Types ───────────────────────────────────────────────────────────────
 
     struct DisputeData {
@@ -53,13 +57,14 @@ abstract contract ProtocolArbitrable {
         string _templateUri
     );
 
-    /// @dev ERC-1497 compatible
+    /// @dev Evidence event for dispute evidence submissions
     event Evidence(uint256 indexed _arbitratorDisputeID, address indexed _party, string _evidence);
 
     // ── Errors ──────────────────────────────────────────────────────────────
 
     error OnlyArbitrator();
     error AlreadyRuled();
+    error InvalidRuling();
 
     // ── Constructor ─────────────────────────────────────────────────────────
 
@@ -78,6 +83,7 @@ abstract contract ProtocolArbitrable {
         DisputeData storage d = disputes[localID];
 
         if (d.isRuled) revert AlreadyRuled();
+        if (_ruling > d.numberOfRulingOptions) revert InvalidRuling();
 
         d.isRuled = true;
         d.ruling = _ruling;
