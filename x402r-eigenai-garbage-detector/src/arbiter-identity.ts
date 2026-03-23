@@ -1,6 +1,7 @@
-import type { Address, Hex } from "viem";
+import { keccak256, toBytes, type Address, type Hex } from "viem";
 import type { LocalAccount } from "viem/accounts";
-import type { ResourceServerExtension } from "@x402/core/types";
+import type { ResourceServerExtension, SettleResultContext } from "@x402/core/types";
+import type { HTTPTransportContext } from "@x402/core/http";
 
 // ---------------------------------------------------------------------------
 // EIP-712 types
@@ -128,6 +129,7 @@ export function createArbiterIdentityExtension(
   return {
     key: "arbiter-identity",
 
+    // Pre-payment: include signed arbiter identity in 402
     enrichPaymentRequiredResponse: async () => {
       try {
         const res = await fetch(
@@ -135,7 +137,39 @@ export function createArbiterIdentityExtension(
         );
         if (!res.ok) return undefined;
         const identity = await res.json();
-        return { info: identity };
+        return { info: { identity } };
+      } catch {
+        return undefined;
+      }
+    },
+
+    // Post-payment: include signed acknowledgment in 200
+    enrichSettlementResponse: async (
+      _declaration: unknown,
+      context: SettleResultContext,
+    ) => {
+      if (!context.result.success) return undefined;
+
+      const transportCtx = context.transportContext as HTTPTransportContext | undefined;
+      const responseBody = transportCtx?.responseBody;
+      if (!responseBody) return undefined;
+
+      const contentHash = keccak256(toBytes(responseBody.toString("utf-8")));
+
+      try {
+        const res = await fetch(`${arbiterUrl}/acknowledge`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            operator: operatorAddress,
+            transaction: context.result.transaction,
+            network: context.result.network,
+            contentHash,
+          }),
+        });
+        if (!res.ok) return undefined;
+        const acknowledgment = await res.json();
+        return { info: { acknowledgment } };
       } catch {
         return undefined;
       }

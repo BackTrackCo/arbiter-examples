@@ -58,7 +58,21 @@ app.get("/identity", async (req, res) => {
   res.json(identity);
 });
 
-// POST /verify — post-payment: evaluate + return signed acknowledgment
+// POST /acknowledge — sign acknowledgment that arbiter received content
+app.post("/acknowledge", async (req, res) => {
+  const { operator, transaction, network, contentHash } = req.body;
+  if (!operator || !contentHash) { res.status(400).json({ error: "operator and contentHash required" }); return; }
+
+  const ack = await signAcknowledgment(clients.account, {
+    operator,
+    transaction: transaction ?? "unknown",
+    network: network ?? `eip155:${CHAIN_ID}`,
+    contentHash,
+  });
+  res.json(ack);
+});
+
+// POST /verify — evaluate content (called by hook, fire-and-forget)
 app.post("/verify", async (req, res) => {
   const {
     responseBody,
