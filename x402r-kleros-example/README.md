@@ -8,6 +8,8 @@ x402r adds refunds to x402 payments. Funds are held in escrow after payment. A p
 
 This example makes `ArbitrableX402r` the arbiter. It is a contract that forwards disputes to Kleros. Jurors review evidence, vote on a ruling, and the contract executes the result on x402r.
 
+> **Note:** In production x402, `PaymentInfo` comes from a merchant's HTTP 402 response — the payer never constructs it manually. This example skips the HTTP flow entirely and builds `PaymentInfo` in `client.ts` for simplicity. See the [x402 examples](https://github.com/coinbase/x402/tree/main/examples/typescript) for the full payment flow.
+
 ## Flow
 
 ```
