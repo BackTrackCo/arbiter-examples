@@ -31,20 +31,13 @@ async function main() {
 
   // --- 1. Discover latest dispute on-chain ---
   console.log('1. Discovering dispute on-chain...')
-  const disputeCount = await arbiter.kleros.getDisputeCount()
-  if (disputeCount === 0n) throw new Error('No disputes found on ArbitrableX402r')
-
-  const localDisputeID = disputeCount - 1n
-  const dispute = await arbiter.kleros.getDispute(localDisputeID)
+  const { localDisputeID, arbitratorDisputeID, dispute } = await arbiter.kleros.getLatestDispute()
   console.log(`  Local dispute:   ${localDisputeID}`)
+  console.log(`  Arbitrator ID:   ${arbitratorDisputeID}`)
   console.log(`  Nonce:           ${dispute.nonce}`)
   console.log(`  Refund amount:   ${dispute.refundAmount}`)
-  console.log(`  Executed:        ${dispute.executed}`)
 
   if (dispute.executed) throw new Error('Dispute already executed')
-
-  const arbitratorDisputeID = await arbiter.kleros.getArbitratorDisputeID(localDisputeID)
-  console.log(`  Arbitrator ID:   ${arbitratorDisputeID}`)
 
   // Resolve paymentInfo from RefundRequest on-chain
   const { keys } = await arbiter.refund!.getOperatorRequests(ctx.operatorAddress, 0n, 100n)

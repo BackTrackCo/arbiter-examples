@@ -66,6 +66,12 @@ export interface EvidenceResult {
   klerosTxHash?: Hash // only set when arbitratorDisputeID is provided
 }
 
+export interface DisputeInfo {
+  localDisputeID: bigint
+  arbitratorDisputeID: bigint
+  dispute: X402rDisputeData
+}
+
 export interface X402rDisputeData {
   refundRequest: Address
   nonce: bigint
@@ -119,6 +125,9 @@ export type KlerosActions = {
 
     /** Read x402r dispute data from ArbitrableX402r. */
     getDispute(localDisputeID: bigint): Promise<X402rDisputeData>
+
+    /** Get the latest dispute with both IDs resolved. */
+    getLatestDispute(): Promise<DisputeInfo>
 
     /** Number of disputes created on ArbitrableX402r. */
     getDisputeCount(): Promise<bigint>

@@ -20,12 +20,7 @@ async function main() {
 
   // --- 1. Discover latest dispute on-chain ---
   console.log('1. Discovering dispute on-chain...')
-  const disputeCount = await merchant.kleros.getDisputeCount()
-  if (disputeCount === 0n) throw new Error('No disputes found')
-
-  const localDisputeID = disputeCount - 1n
-  const dispute = await merchant.kleros.getDispute(localDisputeID)
-  const arbitratorDisputeID = await merchant.kleros.getArbitratorDisputeID(localDisputeID)
+  const { localDisputeID, arbitratorDisputeID, dispute } = await merchant.kleros.getLatestDispute()
 
   // Resolve paymentInfo from RefundRequest on-chain (merchant is the receiver)
   const { keys } = await merchant.refund!.getReceiverRequests(clients.account.address, 0n, 100n)

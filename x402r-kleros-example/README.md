@@ -81,11 +81,8 @@ ArbitrableX402r tracks disputes with two IDs: `localDisputeID` (index in the con
 ```typescript
 const arbiter = createArbiterClient(config).extend(klerosActions(klerosConfig))
 
-// discover the latest dispute
-const count = await arbiter.kleros.getDisputeCount()
-const localDisputeID = count - 1n
-const dispute = await arbiter.kleros.getDispute(localDisputeID)
-const arbitratorDisputeID = await arbiter.kleros.getArbitratorDisputeID(localDisputeID)
+// discover the latest dispute (resolves both IDs + dispute data in one call)
+const { localDisputeID, arbitratorDisputeID, dispute } = await arbiter.kleros.getLatestDispute()
 
 // paymentInfo is stored on-chain by RefundRequest when the payer files a dispute
 const paymentInfo = await arbiter.refund!.getStoredPaymentInfo(paymentInfoHash)

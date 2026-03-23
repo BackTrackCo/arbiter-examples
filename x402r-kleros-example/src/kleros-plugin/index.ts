@@ -16,6 +16,7 @@ import {
   type RequestResult,
   type ExecuteResult,
   type EvidenceResult,
+  type DisputeInfo,
   type X402rDisputeData,
 } from './types.js'
 
@@ -236,6 +237,42 @@ export function klerosActions(config: KlerosConfig) {
           if (logs.length === 0) throw new Error(`No DisputeCreated event found for localDisputeID ${localDisputeID}`)
           return logs[0].args.arbitratorDisputeID!
         },
+
+        async getLatestDispute(): Promise<DisputeInfo> {
+          const count = await client.config.publicClient.readContract({
+            address: config.arbitrableX402r,
+            abi: arbitrableX402rAbi,
+            functionName: 'disputeCount',
+          })
+          if (count === 0n) throw new Error('No disputes found on ArbitrableX402r')
+
+          const localDisputeID = count - 1n
+
+          const result = await client.config.publicClient.readContract({
+            address: config.arbitrableX402r,
+            abi: arbitrableX402rAbi,
+            functionName: 'getX402rDispute',
+            args: [localDisputeID],
+          })
+          const dispute: X402rDisputeData = {
+            refundRequest: result.refundRequest,
+            nonce: result.nonce,
+            refundAmount: result.refundAmount,
+            executed: result.executed,
+          }
+
+          const logs = await client.config.publicClient.getContractEvents({
+            address: config.arbitrableX402r,
+            abi: arbitrableX402rAbi,
+            eventName: 'DisputeCreated',
+            args: { localDisputeID },
+            fromBlock: 0n,
+          })
+          if (logs.length === 0) throw new Error(`No DisputeCreated event found for localDisputeID ${localDisputeID}`)
+          const arbitratorDisputeID = logs[0].args.arbitratorDisputeID!
+
+          return { localDisputeID, arbitratorDisputeID, dispute }
+        },
       },
     }
   }
@@ -250,6 +287,7 @@ export type {
   RequestResult,
   ExecuteResult,
   EvidenceResult,
+  DisputeInfo,
   X402rDisputeData,
   IpfsUploader,
   IpfsFetcher,
