@@ -15,27 +15,27 @@ This example makes `ArbitrableX402r` the arbiter. It is a contract that forwards
 ```
 Payer   -> kleros.request()  -> creates refund request + Kleros dispute + evidence
 Jurors  -> KlerosCore.rule() -> ArbitrableX402r.rule() stores the ruling
-Arbiter -> kleros.approve()  -> ArbitrableX402r.executeRuling() -> RefundRequest.approve/deny
+Anyone  -> kleros.execute()  -> ArbitrableX402r.executeRuling() -> RefundRequest.approve/deny/refuse
 ```
 
-`rule()` only stores the ruling. `executeRuling()` acts on it. This split prevents Kleros from getting stuck if the x402r call reverts. The plugin merges both into one `approve()` / `deny()` call.
+`rule()` only stores the ruling. `executeRuling()` acts on it. This split prevents Kleros from getting stuck if the x402r call reverts.
 
-Evidence is uploaded to IPFS once, then the CID is submitted to two contracts: x402r's `RefundRequestEvidence` (queryable via SDK) and `ArbitrableX402r` (emits ERC-1497 `Evidence` events for the Kleros juror UI).
+Evidence is uploaded to IPFS once, then the CID is submitted to two contracts: x402r's `RefundRequestEvidence` (queryable via SDK) and `ArbitrableX402r` (emits `Evidence` events for the Kleros juror UI).
 
 ## Quick look
 
 ```typescript
 import { createPayerClient, createArbiterClient } from '@x402r/sdk'
-import { klerosActions } from './kleros-plugin/index.js'
+import { klerosActions, KlerosRuling } from './kleros-plugin/index.js'
 
-const payer = createPayerClient(config).extend(klerosActions(klerosConfig))
+// payer: request refund + create Kleros dispute + submit evidence
+const payer = createPayerClient(payerConfig).extend(klerosActions(klerosConfig))
+const { dispute } = await payer.kleros.request(paymentInfo, amount, 0n, evidence)
 
-// payer: request refund + create dispute + submit evidence
-await payer.kleros.request(paymentInfo, amount, nonce, evidence)
-
-// arbiter: approve or deny (ruling + execution in one call)
-await arbiter.kleros.approve(localDisputeID, arbitratorDisputeID, paymentInfo)
-await arbiter.kleros.deny(localDisputeID, arbitratorDisputeID, paymentInfo)
+// arbiter: give ruling (testnet only) + execute on x402r
+const arbiter = createArbiterClient(arbiterConfig).extend(klerosActions(klerosConfig))
+await arbiter.kleros.giveRuling(dispute.arbitratorDisputeID, KlerosRuling.PayerWins) // testnet only
+await arbiter.kleros.execute(dispute.localDisputeID, paymentInfo)
 ```
 
 ## Quick start
@@ -55,7 +55,7 @@ cp .env.arbiter.example .env.arbiter
 pnpm run setup                # deploy contracts (see below)
 pnpm run client               # payer: authorize payment + dispute refund
 pnpm run merchant             # merchant: review + counter-evidence
-pnpm run arbiter 1            # arbiter: approve (1) or deny (2)
+pnpm run arbiter 1            # arbiter: give ruling + execute (1=approve, 2=deny)
 ```
 
 `setup` deploys `ArbitrableX402r`, sets `KlerosCoreRuler` to manual ruling mode, then calls `deployMarketplaceOperator()` from `@x402r/core` which deploys PaymentOperator, EscrowPeriod (300s), RefundRequest, and RefundRequestEvidence. `ArbitrableX402r` is set as the arbiter. All addresses are saved to `context.json`.
@@ -64,24 +64,48 @@ pnpm run arbiter 1            # arbiter: approve (1) or deny (2)
 
 ## Plugin API
 
-The plugin extends the x402r SDK client via `.extend()`. Method names mirror the SDK's `refund.*` and `evidence.*` actions.
+The plugin extends any x402r SDK client via `.extend()`.
+
+**Payer** — request refund + create dispute:
 
 ```typescript
-// request refund + Kleros dispute + optional evidence
-await client.kleros.request(paymentInfo, amount, nonce, evidence?)
+const payer = createPayerClient(config).extend(klerosActions(klerosConfig))
+const { dispute } = await payer.kleros.request(paymentInfo, amount, nonce, evidence)
+await payer.kleros.submitEvidence(paymentInfo, nonce, evidence, dispute.arbitratorDisputeID)
+```
 
-// approve (ruling: PayerWins) or deny (ruling: ReceiverWins)
-// checks if already ruled (mainnet) — skips giveRuling if so
-await client.kleros.approve(localDisputeID, arbitratorDisputeID, paymentInfo)
-await client.kleros.deny(localDisputeID, arbitratorDisputeID, paymentInfo)
+**Arbiter** — discover dispute on-chain, rule:
 
-// dual-channel evidence: IPFS upload -> x402r + ArbitrableX402r (ERC-1497)
-await client.kleros.submitEvidence(paymentInfo, nonce, evidence, arbitratorDisputeID?)
+ArbitrableX402r tracks disputes with two IDs: `localDisputeID` (index in the contract's disputes array) and `arbitratorDisputeID` (Kleros's internal ID). Both are returned by `request()` and discoverable on-chain:
 
-// reads
-await client.kleros.getEvidence(paymentInfo, nonce)   // fetches CIDs from x402r, resolves from IPFS
-await client.kleros.getRuling(arbitratorDisputeID)     // reads currentRuling from KlerosCore
-await client.kleros.getDispute(localDisputeID)         // reads dispute data from ArbitrableX402r
+```typescript
+const arbiter = createArbiterClient(config).extend(klerosActions(klerosConfig))
+
+// discover the latest dispute
+const count = await arbiter.kleros.getDisputeCount()
+const localDisputeID = count - 1n
+const dispute = await arbiter.kleros.getDispute(localDisputeID)
+const arbitratorDisputeID = await arbiter.kleros.getArbitratorDisputeID(localDisputeID)
+
+// paymentInfo is stored on-chain by RefundRequest when the payer files a dispute
+const paymentInfo = await arbiter.refund!.getStoredPaymentInfo(paymentInfoHash)
+```
+
+```typescript
+// testnet: simulate jurors (not needed on mainnet)
+await arbiter.kleros.giveRuling(arbitratorDisputeID, KlerosRuling.PayerWins)
+
+// execute the stored ruling on x402r (same on testnet and mainnet)
+await arbiter.kleros.execute(localDisputeID, paymentInfo)
+```
+
+**Reads** (any role):
+
+```typescript
+await client.kleros.getEvidence(paymentInfo, nonce)
+await client.kleros.getRuling(arbitratorDisputeID)
+await client.kleros.getDisputeCount()
+await client.kleros.getArbitratorDisputeID(localDisputeID)
 ```
 
 `KlerosConfig`:
@@ -103,16 +127,16 @@ await client.kleros.getDispute(localDisputeID)         // reads dispute data fro
 | `build` | `forge build` + generate typed ABI from Foundry artifact |
 | `setup` | Deploy ArbitrableX402r, set Ruler to manual mode, deploy x402r operator stack |
 | `client` | Sign + submit authorization, `kleros.request()` |
-| `merchant` | Review evidence, submit counter-evidence |
-| `arbiter` | Review evidence, `kleros.approve()` or `kleros.deny()` |
+| `merchant` | Discover dispute on-chain, review evidence, submit counter-evidence |
+| `arbiter` | Discover dispute on-chain, review evidence, `giveRuling()` + `execute()` |
 | `deploy-ruler` | Deploy `KlerosCoreRuler` on a new chain (rarely needed) |
 
 ## Contracts
 
 | Contract | What it does |
 |----------|-------------|
-| `ProtocolArbitrable` | Abstract base. Receives rulings via `rule()`, emits ERC-1497 evidence events, manages dispute storage. Reusable by any protocol. |
-| `ArbitrableX402r` | Extends `ProtocolArbitrable` with x402r-specific logic. `createDispute()` links a Kleros dispute to a refund request. `executeRuling()` calls `RefundRequest.approve()` or `.deny()` based on the ruling. |
+| `ProtocolArbitrable` | Abstract base. Receives rulings via `rule()`, emits evidence events, manages dispute storage. Reusable by any protocol. |
+| `ArbitrableX402r` | Extends `ProtocolArbitrable` with x402r-specific logic. `createDispute()` links a Kleros dispute to a refund request. `executeRuling()` calls `approve()`, `deny()`, or `refuse()` based on the ruling. |
 
 ## Ruling outcomes
 
@@ -135,9 +159,9 @@ On-chain bridging (ArbitrableX402r reading directly from x402r evidence) is poss
 
 ## Notes
 
-- **Testnet only** — uses `KlerosCoreRuler` (mock arbitrator with manual rulings). On mainnet, real jurors vote and `approve()`/`deny()` skip the ruling step automatically.
+- **Testnet only** — uses `KlerosCoreRuler` (mock arbitrator with manual rulings). `giveRuling()` simulates jurors and is not needed on mainnet. `execute()` works the same on both.
+- **Two dispute IDs** — `localDisputeID` is ArbitrableX402r's internal index. `arbitratorDisputeID` is Kleros's ID. `request()` returns both. The arbiter can also discover them on-chain via `getDisputeCount()` and `getArbitratorDisputeID()`.
 - **Ruler UI** — for manual testnet rulings outside the scripts, use the [Kleros devtools UI](https://dev--kleros-v2-testnet-devtools.netlify.app/ruler).
-- **PaymentInfo constructed manually** — the scripts build `PaymentInfo` directly instead of receiving it from an HTTP 402 response. Keeps the example focused on the integration.
 - **300s escrow** — real Kleros disputes take days/weeks. Production deployments need a longer escrow period or a freeze condition.
 - **ABI generation** — `pnpm run build` compiles contracts and generates `src/kleros-plugin/generated.ts`. Re-run after contract changes.
 - **`deploy-ruler`** — deploys `KlerosCoreRuler` (implementation + hardcoded ERC1967 proxy). The Kleros npm package doesn't ship a proxy, so the bytecode is inlined.

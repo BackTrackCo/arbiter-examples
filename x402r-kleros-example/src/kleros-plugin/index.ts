@@ -1,4 +1,5 @@
 import { parseEventLogs } from 'viem'
+import type { Hash } from 'viem'
 import type { X402r } from '@x402r/sdk'
 import { ValidationError, type PaymentInfo } from '@x402r/core'
 import {
@@ -13,7 +14,7 @@ import {
   type KlerosEvidence,
   type CreateDisputeResult,
   type RequestResult,
-  type ResolveResult,
+  type ExecuteResult,
   type EvidenceResult,
   type X402rDisputeData,
 } from './types.js'
@@ -72,54 +73,6 @@ async function createKlerosDispute(
   }
 }
 
-async function resolveDispute(
-  client: X402r,
-  config: KlerosConfig,
-  localDisputeID: bigint,
-  arbitratorDisputeID: bigint,
-  paymentInfo: PaymentInfo,
-  ruling: KlerosRuling,
-): Promise<ResolveResult> {
-  const { walletClient, account, publicClient } = requireAccount(client)
-
-  let rulingTxHash: ResolveResult['rulingTxHash'] = null
-
-  // Check if already ruled (mainnet: Kleros jurors decide, ruling already stored)
-  const dispute = await publicClient.readContract({
-    address: config.arbitrableX402r,
-    abi: arbitrableX402rAbi,
-    functionName: 'disputes',
-    args: [localDisputeID],
-  })
-
-  const [isRuled] = dispute
-  if (!isRuled) {
-    // Not yet ruled — give ruling via KlerosCoreRuler (testnet)
-    const { request } = await publicClient.simulateContract({
-      account,
-      address: config.arbitrator,
-      abi: klerosRulerExecuteAbi,
-      functionName: 'executeRuling',
-      args: [arbitratorDisputeID, BigInt(ruling), false, false],
-    })
-    rulingTxHash = await walletClient.writeContract(request)
-    await publicClient.waitForTransactionReceipt({ hash: rulingTxHash })
-  }
-
-  // Execute ruling on x402r (permissionless)
-  const { request: execReq } = await publicClient.simulateContract({
-    account,
-    address: config.arbitrableX402r,
-    abi: arbitrableX402rAbi,
-    functionName: 'executeRuling',
-    args: [localDisputeID, paymentInfo],
-  })
-  const executeTxHash = await walletClient.writeContract(execReq)
-  await publicClient.waitForTransactionReceipt({ hash: executeTxHash })
-
-  return { rulingTxHash, executeTxHash }
-}
-
 async function dualSubmitEvidence(
   client: X402r,
   config: KlerosConfig,
@@ -139,7 +92,7 @@ async function dualSubmitEvidence(
   // Wait between sequential txs from same wallet to avoid nonce conflicts
   await client.config.publicClient.waitForTransactionReceipt({ hash: x402rTxHash })
 
-  // Submit to ArbitrableX402r (ERC-1497 Evidence event for Kleros UI)
+  // Submit to ArbitrableX402r (Evidence event for Kleros UI)
   let klerosTxHash: EvidenceResult['klerosTxHash'] | undefined
   if (arbitratorDisputeID !== undefined) {
     const { request } = await client.config.publicClient.simulateContract({
@@ -156,7 +109,7 @@ async function dualSubmitEvidence(
 }
 
 // ---------------------------------------------------------------------------
-// Plugin factory — mirrors SDK action names (request/approve/deny)
+// Plugin factory
 // ---------------------------------------------------------------------------
 
 export function klerosActions(config: KlerosConfig) {
@@ -186,12 +139,35 @@ export function klerosActions(config: KlerosConfig) {
           return result
         },
 
-        async approve(localDisputeID, arbitratorDisputeID, paymentInfo): Promise<ResolveResult> {
-          return resolveDispute(client, config, localDisputeID, arbitratorDisputeID, paymentInfo, KlerosRuling.PayerWins)
+        async execute(localDisputeID, paymentInfo): Promise<ExecuteResult> {
+          const { walletClient, account, publicClient } = requireAccount(client)
+
+          const { request } = await publicClient.simulateContract({
+            account,
+            address: config.arbitrableX402r,
+            abi: arbitrableX402rAbi,
+            functionName: 'executeRuling',
+            args: [localDisputeID, paymentInfo],
+          })
+          const txHash = await walletClient.writeContract(request)
+          await publicClient.waitForTransactionReceipt({ hash: txHash })
+
+          return { txHash }
         },
 
-        async deny(localDisputeID, arbitratorDisputeID, paymentInfo): Promise<ResolveResult> {
-          return resolveDispute(client, config, localDisputeID, arbitratorDisputeID, paymentInfo, KlerosRuling.ReceiverWins)
+        async giveRuling(arbitratorDisputeID, ruling): Promise<Hash> {
+          const { walletClient, account, publicClient } = requireAccount(client)
+
+          const { request } = await publicClient.simulateContract({
+            account,
+            address: config.arbitrator,
+            abi: klerosRulerExecuteAbi,
+            functionName: 'executeRuling',
+            args: [arbitratorDisputeID, BigInt(ruling), false, false],
+          })
+          const hash = await walletClient.writeContract(request)
+          await publicClient.waitForTransactionReceipt({ hash })
+          return hash
         },
 
         async submitEvidence(paymentInfo, nonce, evidence, arbitratorDisputeID): Promise<EvidenceResult> {
@@ -240,6 +216,26 @@ export function klerosActions(config: KlerosConfig) {
             executed: result.executed,
           }
         },
+
+        async getDisputeCount(): Promise<bigint> {
+          return client.config.publicClient.readContract({
+            address: config.arbitrableX402r,
+            abi: arbitrableX402rAbi,
+            functionName: 'disputeCount',
+          })
+        },
+
+        async getArbitratorDisputeID(localDisputeID): Promise<bigint> {
+          const logs = await client.config.publicClient.getContractEvents({
+            address: config.arbitrableX402r,
+            abi: arbitrableX402rAbi,
+            eventName: 'DisputeCreated',
+            args: { localDisputeID },
+            fromBlock: 0n,
+          })
+          if (logs.length === 0) throw new Error(`No DisputeCreated event found for localDisputeID ${localDisputeID}`)
+          return logs[0].args.arbitratorDisputeID!
+        },
       },
     }
   }
@@ -252,7 +248,7 @@ export type {
   KlerosConfig,
   CreateDisputeResult,
   RequestResult,
-  ResolveResult,
+  ExecuteResult,
   EvidenceResult,
   X402rDisputeData,
   IpfsUploader,

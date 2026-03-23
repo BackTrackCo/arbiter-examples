@@ -1,4 +1,3 @@
-import type { PaymentInfo } from '@x402r/core'
 import type { Address } from 'viem'
 import { createPublicClient, createWalletClient, http } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -53,7 +52,7 @@ export function klerosConfig(
 // ---------------------------------------------------------------------------
 
 export function x402rConfig(
-  addresses: Pick<SavedContext, 'operatorAddress' | 'escrowPeriodAddress' | 'refundRequestAddress' | 'refundRequestEvidenceAddress'>,
+  addresses: Pick<DeploymentContext, 'operatorAddress' | 'escrowPeriodAddress' | 'refundRequestAddress' | 'refundRequestEvidenceAddress'>,
   clients: ReturnType<typeof createClients>,
 ) {
   return {
@@ -68,81 +67,23 @@ export function x402rConfig(
 }
 
 // ---------------------------------------------------------------------------
-// PaymentInfo serialization (for context.json)
+// Deployment context (written by setup, read by all scripts)
 // ---------------------------------------------------------------------------
 
-export function serializePaymentInfo(pi: PaymentInfo) {
-  return {
-    operator: pi.operator,
-    payer: pi.payer,
-    receiver: pi.receiver,
-    token: pi.token,
-    maxAmount: pi.maxAmount.toString(),
-    preApprovalExpiry: pi.preApprovalExpiry,
-    authorizationExpiry: pi.authorizationExpiry,
-    refundExpiry: pi.refundExpiry,
-    minFeeBps: pi.minFeeBps,
-    maxFeeBps: pi.maxFeeBps,
-    feeReceiver: pi.feeReceiver,
-    salt: pi.salt.toString(),
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Context loading
-// ---------------------------------------------------------------------------
-
-export interface SavedContext {
+export interface DeploymentContext {
   arbitrableX402rAddress: Address
   operatorAddress: Address
   escrowPeriodAddress: Address
   refundRequestAddress: Address
   refundRequestEvidenceAddress: Address
-  paymentInfo?: PaymentInfo
-  arbitratorDisputeID?: string
-  localDisputeID?: string
 }
 
-interface RawPaymentInfo {
-  operator: Address
-  payer: Address
-  receiver: Address
-  token: Address
-  maxAmount: string
-  preApprovalExpiry: number
-  authorizationExpiry: number
-  refundExpiry: number
-  minFeeBps: number
-  maxFeeBps: number
-  feeReceiver: Address
-  salt: string
-}
-
-export function loadContext(): SavedContext {
+export function loadContext(): DeploymentContext {
   if (!existsSync(CONTEXT_FILE)) {
     throw new Error(`${CONTEXT_FILE} not found — run pnpm run setup first`)
   }
 
   const raw = JSON.parse(readFileSync(CONTEXT_FILE, 'utf-8'))
-
-  let paymentInfo: PaymentInfo | undefined
-  if (raw.paymentInfo) {
-    const pi = raw.paymentInfo as RawPaymentInfo
-    paymentInfo = {
-      operator: pi.operator,
-      payer: pi.payer,
-      receiver: pi.receiver,
-      token: pi.token,
-      maxAmount: BigInt(pi.maxAmount),
-      preApprovalExpiry: pi.preApprovalExpiry,
-      authorizationExpiry: pi.authorizationExpiry,
-      refundExpiry: pi.refundExpiry,
-      minFeeBps: pi.minFeeBps,
-      maxFeeBps: pi.maxFeeBps,
-      feeReceiver: pi.feeReceiver,
-      salt: BigInt(pi.salt),
-    }
-  }
 
   return {
     arbitrableX402rAddress: raw.arbitrableX402rAddress,
@@ -150,8 +91,5 @@ export function loadContext(): SavedContext {
     escrowPeriodAddress: raw.escrowPeriodAddress,
     refundRequestAddress: raw.refundRequestAddress,
     refundRequestEvidenceAddress: raw.refundRequestEvidenceAddress,
-    paymentInfo,
-    arbitratorDisputeID: raw.arbitratorDisputeID,
-    localDisputeID: raw.localDisputeID,
   }
 }

@@ -4,16 +4,14 @@ import {
 } from '@x402r/core'
 import { createMerchantClient, createPayerClient } from '@x402r/sdk'
 import { erc20Abi } from 'viem'
-import { readFileSync, writeFileSync } from 'node:fs'
 import {
-  CONTEXT_FILE,
   FAR_FUTURE,
   PAYMENT_AMOUNT,
   USDC,
   CHAIN_ID,
 } from '../config.js'
 import { klerosActions } from '../kleros-plugin/index.js'
-import { createClients, klerosConfig, x402rConfig, loadContext, serializePaymentInfo } from './shared.js'
+import { createClients, klerosConfig, x402rConfig, loadContext } from './shared.js'
 
 // ---------------------------------------------------------------------------
 // Payer: Sign authorization, make payment, dispute refund
@@ -94,13 +92,6 @@ async function main() {
     console.log(`  x402r evidence tx:   ${result.evidenceTxHash}`)
     console.log(`  Kleros evidence tx:  ${result.klerosEvidenceTxHash}`)
   }
-
-  // --- Save context ---
-  const existing = JSON.parse(readFileSync(CONTEXT_FILE, 'utf-8'))
-  existing.paymentInfo = serializePaymentInfo(paymentInfo)
-  existing.arbitratorDisputeID = result.dispute.arbitratorDisputeID.toString()
-  existing.localDisputeID = result.dispute.localDisputeID.toString()
-  writeFileSync(CONTEXT_FILE, JSON.stringify(existing, null, 2))
 
   console.log('\nDone. Run: pnpm run merchant')
 }

@@ -1,68 +1,86 @@
 import { createArbiterClient } from '@x402r/sdk'
-import { klerosActions } from '../kleros-plugin/index.js'
+import { klerosActions, KlerosRuling } from '../kleros-plugin/index.js'
 import { createClients, klerosConfig, x402rConfig, loadContext } from './shared.js'
 
 // ---------------------------------------------------------------------------
-// Arbiter: Review evidence, approve or deny refund (single call each)
+// Arbiter: Discover dispute on-chain, review evidence, rule
 //
 // Usage: pnpm run arbiter [1|2]
-//   1 = Approve (Payer Wins — Refund)
-//   2 = Deny (Receiver Wins — No Refund)
+//   1 = PayerWins (Refund)
+//   2 = ReceiverWins (No Refund)
 //
-// Internally: kleros.approve() / kleros.deny() handle both giveRuling
-// (testnet) and executeRuling (bridges ruling to x402r) in one call.
+// On testnet, giveRuling() simulates Kleros jurors.
+// On mainnet, jurors vote and rule() is called by KlerosCore automatically
+// — skip giveRuling() and just call execute().
 // ---------------------------------------------------------------------------
 
 async function main() {
   const rulingArg = process.argv[2] ? parseInt(process.argv[2]) : 0
   if (rulingArg < 1 || rulingArg > 2) {
     console.log('Usage: pnpm run arbiter [1|2]')
-    console.log('  1 = Approve (Payer Wins — Refund)')
-    console.log('  2 = Deny (Receiver Wins — No Refund)')
+    console.log('  1 = PayerWins (Refund)')
+    console.log('  2 = ReceiverWins (No Refund)')
     process.exit(1)
   }
 
   const clients = createClients()
   const ctx = loadContext()
-  if (!ctx.arbitratorDisputeID || !ctx.localDisputeID || !ctx.paymentInfo) {
-    throw new Error('No dispute in context — run client first')
-  }
-
-  const arbitratorDisputeID = BigInt(ctx.arbitratorDisputeID)
-  const localDisputeID = BigInt(ctx.localDisputeID)
 
   const arbiter = createArbiterClient(x402rConfig(ctx, clients))
     .extend(klerosActions(klerosConfig(ctx.arbitrableX402rAddress)))
 
-  // --- 1. Review evidence ---
-  console.log('1. Reviewing evidence...')
+  // --- 1. Discover latest dispute on-chain ---
+  console.log('1. Discovering dispute on-chain...')
+  const disputeCount = await arbiter.kleros.getDisputeCount()
+  if (disputeCount === 0n) throw new Error('No disputes found on ArbitrableX402r')
+
+  const localDisputeID = disputeCount - 1n
+  const dispute = await arbiter.kleros.getDispute(localDisputeID)
+  console.log(`  Local dispute:   ${localDisputeID}`)
+  console.log(`  Nonce:           ${dispute.nonce}`)
+  console.log(`  Refund amount:   ${dispute.refundAmount}`)
+  console.log(`  Executed:        ${dispute.executed}`)
+
+  if (dispute.executed) throw new Error('Dispute already executed')
+
+  const arbitratorDisputeID = await arbiter.kleros.getArbitratorDisputeID(localDisputeID)
+  console.log(`  Arbitrator ID:   ${arbitratorDisputeID}`)
+
+  // Resolve paymentInfo from RefundRequest on-chain
+  const { keys } = await arbiter.refund!.getOperatorRequests(ctx.operatorAddress, 0n, 100n)
+  if (keys.length === 0) throw new Error('No refund requests found')
+  const request = await arbiter.refund!.getByKey(keys[keys.length - 1])
+  const paymentInfo = await arbiter.refund!.getStoredPaymentInfo(request.paymentInfoHash)
+  console.log(`  Payer:           ${paymentInfo.payer}`)
+
+  // --- 2. Review evidence ---
+  console.log('\n2. Reviewing evidence...')
   // nonce 0 = first refund request for this payment
-  const evidence = await arbiter.kleros.getEvidence(ctx.paymentInfo, 0n)
+  const evidence = await arbiter.kleros.getEvidence(paymentInfo, dispute.nonce)
   for (const e of evidence) {
     console.log(`  - ${e.name}: ${e.description}`)
   }
 
-  // --- 2. Approve or deny (single call — handles ruling + execution) ---
-  if (rulingArg === 1) {
-    console.log('\n2. Approving refund (Payer Wins)...')
-    const result = await arbiter.kleros.approve(localDisputeID, arbitratorDisputeID, ctx.paymentInfo)
-    if (result.rulingTxHash) console.log(`  Ruling tx:  ${result.rulingTxHash}`)
-    console.log(`  Execute tx: ${result.executeTxHash}`)
-  } else {
-    console.log('\n2. Denying refund (Receiver Wins)...')
-    const result = await arbiter.kleros.deny(localDisputeID, arbitratorDisputeID, ctx.paymentInfo)
-    if (result.rulingTxHash) console.log(`  Ruling tx:  ${result.rulingTxHash}`)
-    console.log(`  Execute tx: ${result.executeTxHash}`)
-  }
+  // --- 3. Give ruling (testnet only — simulates Kleros jurors) ---
+  const ruling = rulingArg as KlerosRuling
+  const label = ruling === KlerosRuling.PayerWins ? 'PayerWins (Refund)' : 'ReceiverWins (No Refund)'
+  console.log(`\n3. Giving ruling: ${label} (testnet — on mainnet, jurors vote)`)
+  const rulingTxHash = await arbiter.kleros.giveRuling(arbitratorDisputeID, ruling)
+  console.log(`  Ruling tx: ${rulingTxHash}`)
 
-  // --- 3. Verify ---
-  const request = await arbiter.refund!.get(ctx.paymentInfo, 0n)
+  // --- 4. Execute ruling on x402r (same on testnet and mainnet) ---
+  console.log('\n4. Executing ruling on x402r...')
+  const result = await arbiter.kleros.execute(localDisputeID, paymentInfo)
+  console.log(`  Execute tx: ${result.txHash}`)
+
+  // --- 5. Verify ---
+  const finalRequest = await arbiter.refund!.get(paymentInfo, dispute.nonce)
   const statusLabels: Record<number, string> = {
     0: 'Pending', 1: 'Approved', 2: 'Denied', 3: 'Cancelled', 4: 'Refused',
   }
-  console.log(`\nRefund status: ${statusLabels[request.status] ?? 'Unknown'}`)
-  if (request.approvedAmount > 0n) {
-    console.log(`Approved amount: ${request.approvedAmount}`)
+  console.log(`\nRefund status: ${statusLabels[finalRequest.status] ?? 'Unknown'}`)
+  if (finalRequest.approvedAmount > 0n) {
+    console.log(`Approved amount: ${finalRequest.approvedAmount}`)
   }
 }
 

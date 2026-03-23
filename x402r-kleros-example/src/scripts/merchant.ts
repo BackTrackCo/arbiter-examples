@@ -3,45 +3,55 @@ import { klerosActions } from '../kleros-plugin/index.js'
 import { createClients, klerosConfig, x402rConfig, loadContext } from './shared.js'
 
 // ---------------------------------------------------------------------------
-// Merchant: Review dispute and submit counter-evidence
+// Merchant: Discover dispute on-chain, review evidence, submit counter-evidence
 //
+// The merchant discovers everything on-chain — no shared state with the payer.
 // Run after: pnpm run client
 // ---------------------------------------------------------------------------
 
 async function main() {
   const clients = createClients()
+  const { publicClient } = clients
   const ctx = loadContext()
-  if (!ctx.paymentInfo || !ctx.arbitratorDisputeID) {
-    throw new Error('No dispute in context — run client first')
-  }
 
   const sdkConfig = x402rConfig(ctx, clients)
   const kConfig = klerosConfig(ctx.arbitrableX402rAddress)
   const merchant = createMerchantClient(sdkConfig).extend(klerosActions(kConfig))
 
-  const arbitratorDisputeID = BigInt(ctx.arbitratorDisputeID)
+  // --- 1. Discover latest dispute on-chain ---
+  console.log('1. Discovering dispute on-chain...')
+  const disputeCount = await merchant.kleros.getDisputeCount()
+  if (disputeCount === 0n) throw new Error('No disputes found')
 
-  // --- 1. Review payer's evidence ---
-  console.log('1. Reviewing payer evidence...')
-  // nonce 0 = first refund request for this payment
-  const evidence = await merchant.kleros.getEvidence(ctx.paymentInfo, 0n)
+  const localDisputeID = disputeCount - 1n
+  const dispute = await merchant.kleros.getDispute(localDisputeID)
+  const arbitratorDisputeID = await merchant.kleros.getArbitratorDisputeID(localDisputeID)
+
+  // Resolve paymentInfo from RefundRequest on-chain (merchant is the receiver)
+  const { keys } = await merchant.refund!.getReceiverRequests(clients.account.address, 0n, 100n)
+  const request = await merchant.refund!.getByKey(keys[keys.length - 1])
+  const paymentInfo = await merchant.refund!.getStoredPaymentInfo(request.paymentInfoHash)
+  console.log(`  Dispute ${localDisputeID} (arbID: ${arbitratorDisputeID}), payer: ${paymentInfo.payer}`)
+
+  // --- 2. Review payer's evidence ---
+  console.log('\n2. Reviewing payer evidence...')
+  // nonce from the dispute data
+  const evidence = await merchant.kleros.getEvidence(paymentInfo, dispute.nonce)
   for (const e of evidence) {
     console.log(`  - ${e.name}: ${e.description}`)
   }
 
-  // --- 2. Submit counter-evidence ---
-  console.log('\n2. Submitting counter-evidence...')
+  // --- 3. Submit counter-evidence ---
+  console.log('\n3. Submitting counter-evidence...')
   const result = await merchant.kleros.submitEvidence(
-    ctx.paymentInfo,
-    0n,
+    paymentInfo,
+    dispute.nonce,
     {
       name: 'Service Delivered',
       description: 'API was operational. Attached server logs showing 200 responses.',
     },
     arbitratorDisputeID,
   )
-  // Wait for confirmation (caller's responsibility — submitEvidence returns hashes immediately)
-  const { publicClient } = clients
   await publicClient.waitForTransactionReceipt({ hash: result.x402rTxHash })
   console.log(`  x402r evidence tx:   ${result.x402rTxHash}`)
   if (result.klerosTxHash) {

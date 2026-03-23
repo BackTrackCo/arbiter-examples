@@ -2,7 +2,7 @@ import type { Address, Hash, Hex } from 'viem'
 import type { PaymentInfo } from '@x402r/core'
 
 // ---------------------------------------------------------------------------
-// Evidence — ERC-1497 compatible
+// Evidence
 // ---------------------------------------------------------------------------
 
 export interface KlerosEvidence {
@@ -57,9 +57,8 @@ export interface RequestResult {
   klerosEvidenceTxHash?: Hash
 }
 
-export interface ResolveResult {
-  rulingTxHash: Hash | null // null if already ruled (mainnet)
-  executeTxHash: Hash
+export interface ExecuteResult {
+  txHash: Hash
 }
 
 export interface EvidenceResult {
@@ -75,13 +74,13 @@ export interface X402rDisputeData {
 }
 
 // ---------------------------------------------------------------------------
-// Plugin actions — mirrors SDK naming (request/approve/deny/submitEvidence/getEvidence)
+// Plugin actions
 // Uses `type` (not `interface`) so it satisfies Record<string, unknown> for .extend()
 // ---------------------------------------------------------------------------
 
 export type KlerosActions = {
   kleros: {
-    /** Request refund + create Kleros dispute + optional dual evidence. Mirrors refund.request(). */
+    /** Request refund + create Kleros dispute + optional dual evidence. */
     request(
       paymentInfo: PaymentInfo,
       amount: bigint,
@@ -89,21 +88,19 @@ export type KlerosActions = {
       evidence?: KlerosEvidence,
     ): Promise<RequestResult>
 
-    /** Approve refund (PayerWins): give ruling + execute on x402r. Mirrors refund.approve(). */
-    approve(
+    /** Execute a stored Kleros ruling on x402r. Permissionless. Works on testnet and mainnet. */
+    execute(
       localDisputeID: bigint,
-      arbitratorDisputeID: bigint,
       paymentInfo: PaymentInfo,
-    ): Promise<ResolveResult>
+    ): Promise<ExecuteResult>
 
-    /** Deny refund (ReceiverWins): give ruling + execute on x402r. Mirrors refund.deny(). */
-    deny(
-      localDisputeID: bigint,
+    /** Give a ruling via KlerosCoreRuler. Testnet only — simulates jurors. */
+    giveRuling(
       arbitratorDisputeID: bigint,
-      paymentInfo: PaymentInfo,
-    ): Promise<ResolveResult>
+      ruling: KlerosRuling,
+    ): Promise<Hash>
 
-    /** Dual-channel evidence: IPFS + x402r + ArbitrableX402r. Mirrors evidence.submit(). */
+    /** Dual-channel evidence: IPFS + x402r + ArbitrableX402r. */
     submitEvidence(
       paymentInfo: PaymentInfo,
       nonce: bigint,
@@ -111,7 +108,7 @@ export type KlerosActions = {
       arbitratorDisputeID?: bigint,
     ): Promise<EvidenceResult>
 
-    /** Fetch evidence from x402r + resolve CIDs from IPFS. Mirrors evidence.getBatch(). */
+    /** Fetch evidence from x402r + resolve CIDs from IPFS. */
     getEvidence(
       paymentInfo: PaymentInfo,
       nonce: bigint,
@@ -122,5 +119,11 @@ export type KlerosActions = {
 
     /** Read x402r dispute data from ArbitrableX402r. */
     getDispute(localDisputeID: bigint): Promise<X402rDisputeData>
+
+    /** Number of disputes created on ArbitrableX402r. */
+    getDisputeCount(): Promise<bigint>
+
+    /** Look up arbitratorDisputeID from DisputeCreated event logs. */
+    getArbitratorDisputeID(localDisputeID: bigint): Promise<bigint>
   }
 }
