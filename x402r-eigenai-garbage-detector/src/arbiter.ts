@@ -1,11 +1,10 @@
 import express from "express";
 import cors from "cors";
-import { keccak256, toBytes, type Address, type Hex } from "viem";
+import { type Address, type Hex } from "viem";
 import { createX402r } from "@x402r/sdk";
 import { EigenAIClient } from "./eigenai-client.js";
 import { type GarbageVerdict } from "./garbage-detector.js";
 import { garbageDetectorActions } from "./garbage-detector-plugin.js";
-import { signArbiterIdentity, signAcknowledgment } from "./arbiter-identity.js";
 import { CHAIN_ID, EIGENAI } from "./config.js";
 import { createClients, x402rConfig, loadContext } from "./scripts/shared.js";
 
@@ -13,16 +12,14 @@ import { createClients, x402rConfig, loadContext } from "./scripts/shared.js";
 // Arbiter: Evaluate response bodies via EigenAI, release on PASS
 //
 // Endpoints:
-//   GET  /identity?operator=0x...  — signed arbiter identity (pre-payment)
-//   POST /verify                   — sign acknowledgment + evaluate async (post-payment)
-//   GET  /verdict/:tx              — poll verdict
-//   GET  /health                   — status
+//   POST /verify       — evaluate content + release on PASS
+//   GET  /verdict/:tx  — poll verdict
+//   GET  /health       — status
 // ---------------------------------------------------------------------------
 
 const clients = createClients();
 const eigenai = new EigenAIClient(clients.account, EIGENAI.grantServer, EIGENAI.model);
 const PORT = Number(process.env.ARBITER_PORT ?? 3001);
-const ARBITER_INFO = process.env.ARBITER_INFO ?? "ipfs://QmPlaceholder";
 
 const gdConfig = { eigenai, seed: EIGENAI.seed };
 
@@ -49,16 +46,7 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
-// GET /identity — pre-payment: signed arbiter identity
-app.get("/identity", async (req, res) => {
-  const operator = (req.query.operator as Address) ?? operatorAddress;
-  if (!operator) { res.status(400).json({ error: "operator query param required" }); return; }
-
-  const identity = await signArbiterIdentity(clients.account, operator, ARBITER_INFO);
-  res.json(identity);
-});
-
-// POST /verify — sign acknowledgment immediately, evaluate async
+// POST /verify — evaluate content, release on PASS (called by onAfterSettle hook)
 app.post("/verify", async (req, res) => {
   const {
     responseBody,
@@ -66,78 +54,58 @@ app.post("/verify", async (req, res) => {
     network = `eip155:${CHAIN_ID}`,
     scheme = "escrow",
     paymentInfo,
-    operator: reqOperator,
-    contentHash: reqContentHash,
   } = req.body;
+  if (!responseBody) { res.status(400).json({ error: "responseBody is required" }); return; }
 
-  const opAddr = reqOperator ?? operatorAddress;
-  const contentHash = reqContentHash ?? (responseBody ? keccak256(toBytes(responseBody)) : undefined);
-
-  if (!contentHash) { res.status(400).json({ error: "responseBody or contentHash required" }); return; }
-
-  // Sign acknowledgment immediately — this is what the extension needs
-  const acknowledgment = await signAcknowledgment(clients.account, {
-    operator: opAddr ?? ("0x0000000000000000000000000000000000000000" as Address),
-    transaction,
-    network,
-    contentHash,
-  });
-
-  // If no responseBody, just return the acknowledgment (called by extension)
-  if (!responseBody) {
-    res.json({ acknowledgment });
-    return;
-  }
-
-  // Evaluate async — don't block the response
   console.log(`[verify] tx=${transaction} scheme=${scheme}`);
+  try {
+    const opAddr = operatorAddress;
+    if (!opAddr) throw new Error("No operator address — run setup or set OPERATOR_ADDRESS");
 
-  // Return acknowledgment immediately
-  res.json({ acknowledgment });
+    const sdk = createX402r(x402rConfig({ operatorAddress: opAddr, escrowPeriodAddress: undefined as any }, clients))
+      .extend(garbageDetectorActions(gdConfig));
 
-  // Fire-and-forget evaluation
-  (async () => {
-    try {
-      if (!opAddr) return;
+    const gv = await sdk.garbageDetector.evaluate(responseBody);
+    console.log(`[verify] ${gv.verdict} — ${gv.reason}`);
 
-      const sdk = createX402r(x402rConfig({ operatorAddress: opAddr, escrowPeriodAddress: undefined as any }, clients))
-        .extend(garbageDetectorActions(gdConfig));
+    const stored: StoredVerdict = {
+      verdict: gv, transaction, network, arbiter: clients.account.address, timestamp: Date.now(),
+    };
 
-      const gv = await sdk.garbageDetector.evaluate(responseBody);
-      console.log(`[verify] ${gv.verdict} — ${gv.reason}`);
-
-      const stored: StoredVerdict = {
-        verdict: gv, transaction, network, arbiter: clients.account.address, timestamp: Date.now(),
-      };
-
-      if (scheme === "escrow" && gv.verdict === "PASS" && paymentInfo) {
-        try {
-          const pi = {
-            operator: paymentInfo.operator,
-            payer: paymentInfo.payer,
-            receiver: paymentInfo.receiver,
-            token: paymentInfo.token,
-            maxAmount: BigInt(paymentInfo.maxAmount),
-            preApprovalExpiry: paymentInfo.preApprovalExpiry,
-            authorizationExpiry: paymentInfo.authorizationExpiry,
-            refundExpiry: paymentInfo.refundExpiry,
-            minFeeBps: paymentInfo.minFeeBps,
-            maxFeeBps: paymentInfo.maxFeeBps,
-            feeReceiver: paymentInfo.feeReceiver,
-            salt: BigInt(paymentInfo.salt),
-          };
-          stored.releaseHash = await sdk.garbageDetector.release(pi);
-          console.log(`[verify] Released: ${stored.releaseHash}`);
-        } catch (err) {
-          console.error("[verify] Release failed:", err);
-        }
+    if (scheme === "escrow" && gv.verdict === "PASS" && paymentInfo) {
+      try {
+        const pi = {
+          operator: paymentInfo.operator,
+          payer: paymentInfo.payer,
+          receiver: paymentInfo.receiver,
+          token: paymentInfo.token,
+          maxAmount: BigInt(paymentInfo.maxAmount),
+          preApprovalExpiry: paymentInfo.preApprovalExpiry,
+          authorizationExpiry: paymentInfo.authorizationExpiry,
+          refundExpiry: paymentInfo.refundExpiry,
+          minFeeBps: paymentInfo.minFeeBps,
+          maxFeeBps: paymentInfo.maxFeeBps,
+          feeReceiver: paymentInfo.feeReceiver,
+          salt: BigInt(paymentInfo.salt),
+        };
+        stored.releaseHash = await sdk.garbageDetector.release(pi);
+        console.log(`[verify] Released: ${stored.releaseHash}`);
+      } catch (err) {
+        console.error("[verify] Release failed:", err);
       }
-
-      verdictStore.set(transaction, stored);
-    } catch (err) {
-      console.error("[verify] Evaluation error:", err);
     }
-  })();
+
+    verdictStore.set(transaction, stored);
+    res.json({
+      verdict: gv.verdict,
+      reason: gv.reason,
+      commitmentHash: gv.commitment.commitmentHash,
+      releaseHash: stored.releaseHash ?? null,
+    });
+  } catch (err) {
+    console.error("[verify] Error:", err);
+    res.status(500).json({ error: "Garbage detection failed" });
+  }
 });
 
 app.get("/verdict/:transaction", (req, res) => {
