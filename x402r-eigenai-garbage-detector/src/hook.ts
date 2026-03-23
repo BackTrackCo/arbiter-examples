@@ -12,12 +12,11 @@ interface HTTPTransportContext {
 export function forwardToArbiter(arbiterUrl: string) {
   return async (context: SettleResultContext): Promise<void> => {
     if (!context.result.success) return;
+    if (context.requirements.scheme !== "escrow") return;
 
     const transportCtx = context.transportContext as HTTPTransportContext | undefined;
     const responseBody = transportCtx?.responseBody;
     if (!responseBody) return;
-
-    const scheme = context.requirements.scheme;
 
     fetch(`${arbiterUrl}/verify`, {
       method: "POST",
@@ -26,7 +25,7 @@ export function forwardToArbiter(arbiterUrl: string) {
         responseBody: responseBody.toString("utf-8"),
         network: context.requirements.network,
         transaction: context.result.transaction,
-        scheme,
+        scheme: context.requirements.scheme,
       }),
     }).catch((err) => console.error("[garbage-detection] arbiter post failed:", err));
   };
