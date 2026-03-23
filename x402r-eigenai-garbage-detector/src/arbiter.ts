@@ -1,26 +1,31 @@
 import express from "express";
 import cors from "cors";
-import { type Address, type Hex } from "viem";
+import { keccak256, toBytes, type Address, type Hex } from "viem";
 import { createX402r } from "@x402r/sdk";
 import { EigenAIClient } from "./eigenai-client.js";
 import { type GarbageVerdict } from "./garbage-detector.js";
 import { garbageDetectorActions } from "./garbage-detector-plugin.js";
+import { signArbiterIdentity, signAcknowledgment } from "./arbiter-identity.js";
 import { CHAIN_ID, EIGENAI } from "./config.js";
 import { createClients, x402rConfig, loadContext } from "./scripts/shared.js";
 
 // ---------------------------------------------------------------------------
 // Arbiter: Evaluate response bodies via EigenAI, release on PASS
 //
-// Usage: pnpm run arbiter
+// Endpoints:
+//   GET  /identity?operator=0x...  — signed arbiter identity (pre-payment)
+//   POST /verify                   — evaluate + signed acknowledgment (post-payment)
+//   GET  /verdict/:tx              — poll verdict
+//   GET  /health                   — status
 // ---------------------------------------------------------------------------
 
 const clients = createClients();
 const eigenai = new EigenAIClient(clients.account, EIGENAI.grantServer, EIGENAI.model);
 const PORT = Number(process.env.ARBITER_PORT ?? 3001);
+const ARBITER_INFO = process.env.ARBITER_INFO ?? "ipfs://QmPlaceholder";
 
 const gdConfig = { eigenai, seed: EIGENAI.seed };
 
-// Try to load operator from context.json, fall back to env
 let operatorAddress: Address | undefined;
 try {
   const ctx = loadContext();
@@ -44,6 +49,16 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
+// GET /identity — pre-payment: signed arbiter identity
+app.get("/identity", async (req, res) => {
+  const operator = (req.query.operator as Address) ?? operatorAddress;
+  if (!operator) { res.status(400).json({ error: "operator query param required" }); return; }
+
+  const identity = await signArbiterIdentity(clients.account, operator, ARBITER_INFO);
+  res.json(identity);
+});
+
+// POST /verify — post-payment: evaluate + return signed acknowledgment
 app.post("/verify", async (req, res) => {
   const {
     responseBody,
@@ -69,7 +84,6 @@ app.post("/verify", async (req, res) => {
       verdict: gv, transaction, network, arbiter: clients.account.address, timestamp: Date.now(),
     };
 
-    // Release on PASS for escrow scheme
     if (scheme === "escrow" && gv.verdict === "PASS" && paymentInfo) {
       try {
         const pi = {
@@ -93,12 +107,22 @@ app.post("/verify", async (req, res) => {
       }
     }
 
+    // Sign acknowledgment — proves arbiter received this content
+    const contentHash = keccak256(toBytes(responseBody));
+    const acknowledgment = await signAcknowledgment(clients.account, {
+      operator: opAddr,
+      transaction,
+      network,
+      contentHash,
+    });
+
     verdictStore.set(transaction, stored);
     res.json({
       verdict: gv.verdict,
       reason: gv.reason,
       commitmentHash: gv.commitment.commitmentHash,
       releaseHash: stored.releaseHash ?? null,
+      acknowledgment,
     });
   } catch (err) {
     console.error("[verify] Error:", err);
