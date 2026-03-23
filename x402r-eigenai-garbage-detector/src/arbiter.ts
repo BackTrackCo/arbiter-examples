@@ -14,7 +14,7 @@ import { createClients, x402rConfig, loadContext } from "./scripts/shared.js";
 //
 // Endpoints:
 //   GET  /identity?operator=0x...  — signed arbiter identity (pre-payment)
-//   POST /verify                   — evaluate + signed acknowledgment (post-payment)
+//   POST /verify                   — sign acknowledgment + evaluate async (post-payment)
 //   GET  /verdict/:tx              — poll verdict
 //   GET  /health                   — status
 // ---------------------------------------------------------------------------
@@ -58,21 +58,7 @@ app.get("/identity", async (req, res) => {
   res.json(identity);
 });
 
-// POST /acknowledge — sign acknowledgment that arbiter received content
-app.post("/acknowledge", async (req, res) => {
-  const { operator, transaction, network, contentHash } = req.body;
-  if (!operator || !contentHash) { res.status(400).json({ error: "operator and contentHash required" }); return; }
-
-  const ack = await signAcknowledgment(clients.account, {
-    operator,
-    transaction: transaction ?? "unknown",
-    network: network ?? `eip155:${CHAIN_ID}`,
-    contentHash,
-  });
-  res.json(ack);
-});
-
-// POST /verify — evaluate content (called by hook, fire-and-forget)
+// POST /verify — sign acknowledgment immediately, evaluate async
 app.post("/verify", async (req, res) => {
   const {
     responseBody,
@@ -80,68 +66,78 @@ app.post("/verify", async (req, res) => {
     network = `eip155:${CHAIN_ID}`,
     scheme = "escrow",
     paymentInfo,
+    operator: reqOperator,
+    contentHash: reqContentHash,
   } = req.body;
-  if (!responseBody) { res.status(400).json({ error: "responseBody is required" }); return; }
 
-  console.log(`[verify] tx=${transaction} scheme=${scheme}`);
-  try {
-    const opAddr = operatorAddress;
-    if (!opAddr) throw new Error("No operator address — run setup or set OPERATOR_ADDRESS");
+  const opAddr = reqOperator ?? operatorAddress;
+  const contentHash = reqContentHash ?? (responseBody ? keccak256(toBytes(responseBody)) : undefined);
 
-    const sdk = createX402r(x402rConfig({ operatorAddress: opAddr, escrowPeriodAddress: undefined as any }, clients))
-      .extend(garbageDetectorActions(gdConfig));
+  if (!contentHash) { res.status(400).json({ error: "responseBody or contentHash required" }); return; }
 
-    const gv = await sdk.garbageDetector.evaluate(responseBody);
-    console.log(`[verify] ${gv.verdict} — ${gv.reason}`);
+  // Sign acknowledgment immediately — this is what the extension needs
+  const acknowledgment = await signAcknowledgment(clients.account, {
+    operator: opAddr ?? ("0x0000000000000000000000000000000000000000" as Address),
+    transaction,
+    network,
+    contentHash,
+  });
 
-    const stored: StoredVerdict = {
-      verdict: gv, transaction, network, arbiter: clients.account.address, timestamp: Date.now(),
-    };
-
-    if (scheme === "escrow" && gv.verdict === "PASS" && paymentInfo) {
-      try {
-        const pi = {
-          operator: paymentInfo.operator,
-          payer: paymentInfo.payer,
-          receiver: paymentInfo.receiver,
-          token: paymentInfo.token,
-          maxAmount: BigInt(paymentInfo.maxAmount),
-          preApprovalExpiry: paymentInfo.preApprovalExpiry,
-          authorizationExpiry: paymentInfo.authorizationExpiry,
-          refundExpiry: paymentInfo.refundExpiry,
-          minFeeBps: paymentInfo.minFeeBps,
-          maxFeeBps: paymentInfo.maxFeeBps,
-          feeReceiver: paymentInfo.feeReceiver,
-          salt: BigInt(paymentInfo.salt),
-        };
-        stored.releaseHash = await sdk.garbageDetector.release(pi);
-        console.log(`[verify] Released: ${stored.releaseHash}`);
-      } catch (err) {
-        console.error("[verify] Release failed:", err);
-      }
-    }
-
-    // Sign acknowledgment — proves arbiter received this content
-    const contentHash = keccak256(toBytes(responseBody));
-    const acknowledgment = await signAcknowledgment(clients.account, {
-      operator: opAddr,
-      transaction,
-      network,
-      contentHash,
-    });
-
-    verdictStore.set(transaction, stored);
-    res.json({
-      verdict: gv.verdict,
-      reason: gv.reason,
-      commitmentHash: gv.commitment.commitmentHash,
-      releaseHash: stored.releaseHash ?? null,
-      acknowledgment,
-    });
-  } catch (err) {
-    console.error("[verify] Error:", err);
-    res.status(500).json({ error: "Garbage detection failed" });
+  // If no responseBody, just return the acknowledgment (called by extension)
+  if (!responseBody) {
+    res.json({ acknowledgment });
+    return;
   }
+
+  // Evaluate async — don't block the response
+  console.log(`[verify] tx=${transaction} scheme=${scheme}`);
+
+  // Return acknowledgment immediately
+  res.json({ acknowledgment });
+
+  // Fire-and-forget evaluation
+  (async () => {
+    try {
+      if (!opAddr) return;
+
+      const sdk = createX402r(x402rConfig({ operatorAddress: opAddr, escrowPeriodAddress: undefined as any }, clients))
+        .extend(garbageDetectorActions(gdConfig));
+
+      const gv = await sdk.garbageDetector.evaluate(responseBody);
+      console.log(`[verify] ${gv.verdict} — ${gv.reason}`);
+
+      const stored: StoredVerdict = {
+        verdict: gv, transaction, network, arbiter: clients.account.address, timestamp: Date.now(),
+      };
+
+      if (scheme === "escrow" && gv.verdict === "PASS" && paymentInfo) {
+        try {
+          const pi = {
+            operator: paymentInfo.operator,
+            payer: paymentInfo.payer,
+            receiver: paymentInfo.receiver,
+            token: paymentInfo.token,
+            maxAmount: BigInt(paymentInfo.maxAmount),
+            preApprovalExpiry: paymentInfo.preApprovalExpiry,
+            authorizationExpiry: paymentInfo.authorizationExpiry,
+            refundExpiry: paymentInfo.refundExpiry,
+            minFeeBps: paymentInfo.minFeeBps,
+            maxFeeBps: paymentInfo.maxFeeBps,
+            feeReceiver: paymentInfo.feeReceiver,
+            salt: BigInt(paymentInfo.salt),
+          };
+          stored.releaseHash = await sdk.garbageDetector.release(pi);
+          console.log(`[verify] Released: ${stored.releaseHash}`);
+        } catch (err) {
+          console.error("[verify] Release failed:", err);
+        }
+      }
+
+      verdictStore.set(transaction, stored);
+    } catch (err) {
+      console.error("[verify] Evaluation error:", err);
+    }
+  })();
 });
 
 app.get("/verdict/:transaction", (req, res) => {

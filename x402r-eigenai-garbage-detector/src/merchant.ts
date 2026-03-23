@@ -9,7 +9,6 @@ import {
   declareOfferReceiptExtension,
 } from "@x402/extensions/offer-receipt";
 import { getChainConfig } from "@x402r/sdk";
-import { forwardToArbiter } from "./hook.js";
 import { createArbiterIdentityExtension, declareArbiterIdentityExtension } from "./arbiter-identity.js";
 import { CHAIN_ID } from "./config.js";
 import { createClients, loadContext } from "./scripts/shared.js";
@@ -39,8 +38,7 @@ const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
 const resourceServer = new x402ResourceServer(facilitatorClient)
   .register(networkId, new EscrowServerScheme())
   .registerExtension(createOfferReceiptExtension(issuer))
-  .registerExtension(createArbiterIdentityExtension(ARBITER_URL, ctx.operatorAddress))
-  .onAfterSettle(forwardToArbiter(ARBITER_URL));
+  .registerExtension(createArbiterIdentityExtension(ARBITER_URL, ctx.operatorAddress));
 
 const app = express();
 app.use(cors());

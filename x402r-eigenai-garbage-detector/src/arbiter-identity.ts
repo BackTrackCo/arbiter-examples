@@ -157,7 +157,7 @@ export function createArbiterIdentityExtension(
       const contentHash = keccak256(toBytes(responseBody.toString("utf-8")));
 
       try {
-        const res = await fetch(`${arbiterUrl}/acknowledge`, {
+        const res = await fetch(`${arbiterUrl}/verify`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -165,6 +165,7 @@ export function createArbiterIdentityExtension(
             transaction: context.result.transaction,
             network: context.result.network,
             contentHash,
+            responseBody: responseBody.toString("utf-8"),
           }),
         });
         if (!res.ok) return undefined;
