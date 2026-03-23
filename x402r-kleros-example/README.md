@@ -159,6 +159,7 @@ On-chain bridging (ArbitrableX402r reading directly from x402r evidence) is poss
 - **Testnet only** — uses `KlerosCoreRuler` (mock arbitrator with manual rulings). `giveRuling()` simulates jurors and is not needed on mainnet. `execute()` works the same on both.
 - **Two dispute IDs** — `localDisputeID` is ArbitrableX402r's internal index. `arbitratorDisputeID` is Kleros's ID. `request()` returns both. The arbiter can also discover them on-chain via `getDisputeCount()` and `getArbitratorDisputeID()`.
 - **Ruler UI** — for manual testnet rulings outside the scripts, use the [Kleros devtools UI](https://dev--kleros-v2-testnet-devtools.netlify.app/ruler).
+- **Event watching** — the x402r SDK has `watch` actions (`onRefundRequest`, etc.) for real-time event listening. A production arbiter service would use these to discover new disputes automatically instead of polling `getLatestDispute()`. Not used here since the scripts run sequentially.
 - **300s escrow** — real Kleros disputes take days/weeks. Production deployments need a longer escrow period or a freeze condition.
 - **ABI generation** — `pnpm run build` compiles contracts and generates `src/kleros-plugin/generated.ts`. Re-run after contract changes.
 - **`deploy-ruler`** — deploys `KlerosCoreRuler` (implementation + hardcoded ERC1967 proxy). The Kleros npm package doesn't ship a proxy, so the bytecode is inlined.
