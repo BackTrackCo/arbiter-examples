@@ -89,8 +89,7 @@ async function main() {
   console.log(`  Local dispute:       ${result.dispute.localDisputeID}`)
   console.log(`  Dispute tx:          ${result.dispute.txHash}`)
   if (result.evidenceTxHash) {
-    console.log(`  x402r evidence tx:   ${result.evidenceTxHash}`)
-    console.log(`  Kleros evidence tx:  ${result.klerosEvidenceTxHash}`)
+    console.log(`  Evidence tx:         ${result.evidenceTxHash}`)
   }
 
   console.log('\nDone. Run: pnpm run merchant')

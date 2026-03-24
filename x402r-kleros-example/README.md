@@ -20,7 +20,7 @@ Anyone  -> kleros.execute()  -> ArbitrableX402r.executeRuling() -> RefundRequest
 
 `rule()` only stores the ruling. `executeRuling()` acts on it. This split prevents Kleros from getting stuck if the x402r call reverts.
 
-Evidence is uploaded to IPFS once, then the CID is submitted to two contracts: x402r's `RefundRequestEvidence` (queryable via SDK) and `ArbitrableX402r` (emits `Evidence` events for the Kleros juror UI).
+Evidence is uploaded to IPFS as JSON, then the CID is submitted to `ArbitrableX402r` which emits `Evidence` events for the Kleros juror UI.
 
 ## Quick look
 
@@ -59,7 +59,7 @@ pnpm run merchant             # merchant: review + counter-evidence
 pnpm run arbiter 1            # arbiter: give ruling + execute (1=approve, 2=deny)
 ```
 
-`setup` deploys `ArbitrableX402r`, sets `KlerosCoreRuler` to manual ruling mode, then calls `deployMarketplaceOperator()` from `@x402r/core` which deploys PaymentOperator, EscrowPeriod (300s), RefundRequest, and RefundRequestEvidence. `ArbitrableX402r` is set as the arbiter. All addresses are saved to `context.json`.
+`setup` deploys `ArbitrableX402r`, sets `KlerosCoreRuler` to manual ruling mode, then calls `deployMarketplaceOperator()` from `@x402r/core` which deploys PaymentOperator, EscrowPeriod (300s), and RefundRequest. `ArbitrableX402r` is set as the arbiter. All addresses are saved to `context.json`.
 
 `KlerosCoreRuler` at `0x58d4348bb6aeab75d09483e407f348b8497d381a` is shared infrastructure we deployed on Arb Sepolia (Kleros has no official deployment there). Reusable by anyone. Only run `deploy-ruler` if you need it on a new chain.
 
@@ -133,7 +133,7 @@ await arbiter.kleros.execute(localDisputeID, paymentInfo)
 - **Two dispute IDs** — `localDisputeID` is ArbitrableX402r's internal index. `arbitratorDisputeID` is Kleros's ID. `request()` returns both. `getLatestDispute()` resolves both on-chain.
 - **Testnet only** — `giveRuling()` simulates jurors via `KlerosCoreRuler`. Not needed on mainnet. `execute()` works the same on both.
 - **Ruler UI** — for manual testnet rulings outside the scripts, use the [Kleros devtools UI](https://dev--kleros-v2-testnet-devtools.netlify.app/ruler).
-- **Evidence** — JSON uploaded to IPFS (`{name, description, fileURI?}`), CID submitted to both x402r and ArbitrableX402r. On-chain bridging deferred; plugin handles dual-submission.
+- **Evidence** — JSON uploaded to IPFS (`{name, description, fileURI?}`), CID submitted to ArbitrableX402r which emits `Evidence` events for the Kleros juror UI.
 - **Event watching** — the SDK has `watch` actions for real-time event listening. A production arbiter would use `onRefundRequest` instead of polling `getLatestDispute()`.
 - **300s escrow** — real Kleros disputes take days/weeks. Production needs a longer escrow or a freeze condition.
 - **ABI generation** — `pnpm run build` generates `src/kleros-plugin/generated.ts` from the Foundry artifact. Re-run after contract changes.

@@ -73,7 +73,6 @@ async function main() {
   console.log(`  Operator:       ${deployment.operatorAddress}`)
   console.log(`  EscrowPeriod:   ${deployment.escrowPeriodAddress}`)
   console.log(`  RefundRequest:  ${deployment.refundRequestAddress}`)
-  console.log(`  RefundEvidence: ${deployment.refundRequestEvidenceAddress}`)
   console.log(`  New: ${deployment.summary.newCount}, existing: ${deployment.summary.existingCount}`)
 
   // --- Save context ---
@@ -82,7 +81,6 @@ async function main() {
     operatorAddress: deployment.operatorAddress,
     escrowPeriodAddress: deployment.escrowPeriodAddress,
     refundRequestAddress: deployment.refundRequestAddress,
-    refundRequestEvidenceAddress: deployment.refundRequestEvidenceAddress,
   }
   writeFileSync(CONTEXT_FILE, JSON.stringify(context, null, 2))
   console.log(`\nSaved to ${CONTEXT_FILE}`)

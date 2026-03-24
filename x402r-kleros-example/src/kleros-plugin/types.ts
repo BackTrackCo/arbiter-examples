@@ -54,7 +54,6 @@ export interface RequestResult {
   requestTxHash: Hash
   dispute: CreateDisputeResult
   evidenceTxHash?: Hash
-  klerosEvidenceTxHash?: Hash
 }
 
 export interface ExecuteResult {
@@ -62,8 +61,7 @@ export interface ExecuteResult {
 }
 
 export interface EvidenceResult {
-  x402rTxHash: Hash
-  klerosTxHash?: Hash // only set when arbitratorDisputeID is provided
+  txHash: Hash
 }
 
 export interface DisputeInfo {
@@ -106,18 +104,15 @@ export type KlerosActions = {
       ruling: KlerosRuling,
     ): Promise<Hash>
 
-    /** Dual-channel evidence: IPFS + x402r + ArbitrableX402r. */
+    /** Upload evidence to IPFS and submit CID to ArbitrableX402r. */
     submitEvidence(
-      paymentInfo: PaymentInfo,
-      nonce: bigint,
       evidence: KlerosEvidence,
-      arbitratorDisputeID?: bigint,
+      arbitratorDisputeID: bigint,
     ): Promise<EvidenceResult>
 
-    /** Fetch evidence from x402r + resolve CIDs from IPFS. */
+    /** Fetch evidence from ArbitrableX402r Evidence events + resolve CIDs from IPFS. */
     getEvidence(
-      paymentInfo: PaymentInfo,
-      nonce: bigint,
+      arbitratorDisputeID: bigint,
     ): Promise<KlerosEvidence[]>
 
     /** Read current ruling from KlerosCore. */
