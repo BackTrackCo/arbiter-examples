@@ -74,13 +74,11 @@ async function createKlerosDispute(
   }
 }
 
-async function dualSubmitEvidence(
+async function submitKlerosEvidence(
   client: X402r,
   config: KlerosConfig,
-  paymentInfo: PaymentInfo,
-  nonce: bigint,
   evidence: KlerosEvidence,
-  arbitratorDisputeID?: bigint,
+  arbitratorDisputeID: bigint,
 ): Promise<EvidenceResult> {
   if (!config.ipfsUploader) throw new ValidationError('ipfsUploader required for submitEvidence — provide it in KlerosConfig')
   const { walletClient, account } = requireAccount(client)
@@ -88,25 +86,17 @@ async function dualSubmitEvidence(
   // Upload evidence to IPFS
   const cid = await config.ipfsUploader(evidence)
 
-  // Submit to x402r RefundRequestEvidence
-  const x402rTxHash = await client.evidence!.submit(paymentInfo, nonce, cid)
-  // Wait between sequential txs from same wallet to avoid nonce conflicts
-  await client.config.publicClient.waitForTransactionReceipt({ hash: x402rTxHash })
+  // Submit CID to ArbitrableX402r (emits Evidence event for Kleros UI)
+  const { request } = await client.config.publicClient.simulateContract({
+    account,
+    address: config.arbitrableX402r,
+    abi: arbitrableX402rAbi,
+    functionName: 'submitEvidence',
+    args: [arbitratorDisputeID, `/ipfs/${cid}`],
+  })
+  const txHash = await walletClient.writeContract(request)
 
-  // Submit to ArbitrableX402r (Evidence event for Kleros UI)
-  let klerosTxHash: EvidenceResult['klerosTxHash'] | undefined
-  if (arbitratorDisputeID !== undefined) {
-    const { request } = await client.config.publicClient.simulateContract({
-      account,
-      address: config.arbitrableX402r,
-      abi: arbitrableX402rAbi,
-      functionName: 'submitEvidence',
-      args: [arbitratorDisputeID, `/ipfs/${cid}`],
-    })
-    klerosTxHash = await walletClient.writeContract(request)
-  }
-
-  return { x402rTxHash, klerosTxHash }
+  return { txHash }
 }
 
 // ---------------------------------------------------------------------------
@@ -117,7 +107,6 @@ export function klerosActions(config: KlerosConfig) {
   return (client: X402r): KlerosActions => {
     // Validate SDK dependencies eagerly at extend() time
     if (!client.refund) throw new ValidationError('klerosActions requires refundRequestAddress in X402rConfig')
-    if (!client.evidence) throw new ValidationError('klerosActions requires refundRequestEvidenceAddress in X402rConfig')
 
     return {
       kleros: {
@@ -129,12 +118,11 @@ export function klerosActions(config: KlerosConfig) {
           // 2. Create Kleros dispute on ArbitrableX402r
           const dispute = await createKlerosDispute(client, config, paymentInfo, nonce, amount)
 
-          // 3. Optional: submit dual evidence
+          // 3. Optional: submit evidence to Kleros
           const result: RequestResult = { requestTxHash, dispute }
           if (evidence && config.ipfsUploader) {
-            const ev = await dualSubmitEvidence(client, config, paymentInfo, nonce, evidence, dispute.arbitratorDisputeID)
-            result.evidenceTxHash = ev.x402rTxHash
-            result.klerosEvidenceTxHash = ev.klerosTxHash
+            const ev = await submitKlerosEvidence(client, config, evidence, dispute.arbitratorDisputeID)
+            result.evidenceTxHash = ev.txHash
           }
 
           return result
@@ -171,20 +159,27 @@ export function klerosActions(config: KlerosConfig) {
           return hash
         },
 
-        async submitEvidence(paymentInfo, nonce, evidence, arbitratorDisputeID): Promise<EvidenceResult> {
-          return dualSubmitEvidence(client, config, paymentInfo, nonce, evidence, arbitratorDisputeID)
+        async submitEvidence(evidence, arbitratorDisputeID): Promise<EvidenceResult> {
+          return submitKlerosEvidence(client, config, evidence, arbitratorDisputeID)
         },
 
-        async getEvidence(paymentInfo, nonce): Promise<KlerosEvidence[]> {
+        async getEvidence(arbitratorDisputeID): Promise<KlerosEvidence[]> {
           if (!config.ipfsFetcher) throw new ValidationError('ipfsFetcher required for getEvidence — provide it in KlerosConfig')
 
-          const count = await client.evidence!.count(paymentInfo, nonce)
-          if (count === 0n) return []
+          const logs = await client.config.publicClient.getContractEvents({
+            address: config.arbitrableX402r,
+            abi: arbitrableX402rAbi,
+            eventName: 'Evidence',
+            args: { _arbitratorDisputeID: arbitratorDisputeID },
+            fromBlock: 0n,
+          })
+          if (logs.length === 0) return []
 
-          const batch = await client.evidence!.getBatch(paymentInfo, nonce, 0n, count)
           const results = await Promise.all(
-            batch.entries.map(async (entry) => {
-              const json = await config.ipfsFetcher!(entry.cid)
+            logs.map(async (log) => {
+              const evidenceURI = log.args._evidence!
+              const cid = evidenceURI.startsWith('/ipfs/') ? evidenceURI.slice(6) : evidenceURI
+              const json = await config.ipfsFetcher!(cid)
               return JSON.parse(json) as KlerosEvidence
             }),
           )

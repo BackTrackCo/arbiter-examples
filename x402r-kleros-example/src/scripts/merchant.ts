@@ -31,7 +31,7 @@ async function main() {
   // --- 2. Review payer's evidence ---
   console.log('\n2. Reviewing payer evidence...')
   // nonce from the dispute data
-  const evidence = await merchant.kleros.getEvidence(paymentInfo, dispute.nonce)
+  const evidence = await merchant.kleros.getEvidence(arbitratorDisputeID)
   for (const e of evidence) {
     console.log(`  - ${e.name}: ${e.description}`)
   }
@@ -39,20 +39,14 @@ async function main() {
   // --- 3. Submit counter-evidence ---
   console.log('\n3. Submitting counter-evidence...')
   const result = await merchant.kleros.submitEvidence(
-    paymentInfo,
-    dispute.nonce,
     {
       name: 'Service Delivered',
       description: 'API was operational. Attached server logs showing 200 responses.',
     },
     arbitratorDisputeID,
   )
-  await publicClient.waitForTransactionReceipt({ hash: result.x402rTxHash })
-  console.log(`  x402r evidence tx:   ${result.x402rTxHash}`)
-  if (result.klerosTxHash) {
-    await publicClient.waitForTransactionReceipt({ hash: result.klerosTxHash })
-    console.log(`  Kleros evidence tx:  ${result.klerosTxHash}`)
-  }
+  await publicClient.waitForTransactionReceipt({ hash: result.txHash })
+  console.log(`  Evidence tx:         ${result.txHash}`)
 
   console.log('\nDone. Run: pnpm run arbiter 1  (approve) or  pnpm run arbiter 2  (deny)')
 }

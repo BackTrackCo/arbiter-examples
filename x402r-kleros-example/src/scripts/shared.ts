@@ -52,7 +52,7 @@ export function klerosConfig(
 // ---------------------------------------------------------------------------
 
 export function x402rConfig(
-  addresses: Pick<DeploymentContext, 'operatorAddress' | 'escrowPeriodAddress' | 'refundRequestAddress' | 'refundRequestEvidenceAddress'>,
+  addresses: Pick<DeploymentContext, 'operatorAddress' | 'escrowPeriodAddress' | 'refundRequestAddress'>,
   clients: ReturnType<typeof createClients>,
 ) {
   return {
@@ -62,7 +62,6 @@ export function x402rConfig(
     chainId: CHAIN_ID,
     escrowPeriodAddress: addresses.escrowPeriodAddress,
     refundRequestAddress: addresses.refundRequestAddress,
-    refundRequestEvidenceAddress: addresses.refundRequestEvidenceAddress,
   }
 }
 
@@ -75,7 +74,6 @@ export interface DeploymentContext {
   operatorAddress: Address
   escrowPeriodAddress: Address
   refundRequestAddress: Address
-  refundRequestEvidenceAddress: Address
 }
 
 export function loadContext(): DeploymentContext {
@@ -90,6 +88,5 @@ export function loadContext(): DeploymentContext {
     operatorAddress: raw.operatorAddress,
     escrowPeriodAddress: raw.escrowPeriodAddress,
     refundRequestAddress: raw.refundRequestAddress,
-    refundRequestEvidenceAddress: raw.refundRequestEvidenceAddress,
   }
 }
