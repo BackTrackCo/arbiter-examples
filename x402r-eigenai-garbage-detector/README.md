@@ -21,7 +21,7 @@ Three systems work together: x402r (payment escrow), AI inference (content evalu
 
 | Provider | Best for | Determinism | Verifiability |
 |----------|----------|-------------|---------------|
-| **OpenAI** | Quick setup, low cost | Probabilistic (seed hint) | Commitment hash only |
+| **OpenAI-compatible** | Any model via OpenAI/OpenRouter/Together | Probabilistic (seed hint) | Commitment hash only |
 | **Ollama** | EigenCloud TEE deployment | Deterministic on same hardware | TEE attestation + commitment |
 | **EigenAI** | Legacy (currently unavailable) | Deterministic | Replay-verifiable |
 
@@ -40,12 +40,23 @@ Three systems work together: x402r (payment escrow), AI inference (content evalu
 
 Set `INFERENCE_PROVIDER` in `.env`:
 
-### OpenAI (default)
+### OpenAI-compatible (default)
+
+Works with any OpenAI-compatible API: OpenAI, OpenRouter, Together, vLLM, LiteLLM, etc.
 
 ```env
 INFERENCE_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini    # optional, default gpt-4o-mini
+```
+
+Via OpenRouter (access Claude, Llama, Mistral, etc. with one API key):
+
+```env
+INFERENCE_PROVIDER=openai
+OPENAI_API_KEY=sk-or-v1-...
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+OPENAI_MODEL=anthropic/claude-sonnet-4
 ```
 
 ### Ollama (local model -- best for EigenCloud TEE)
@@ -88,11 +99,11 @@ cp .env.example .env
 
 ```typescript
 import { garbageDetectorActions } from './garbage-detector-plugin.js'
-import { OpenAIProvider } from './providers/openai.js'
+import { OpenAICompatibleProvider } from './providers/openai.js'
 
 const sdk = createX402r({ ... }).extend(
   garbageDetectorActions({
-    provider: new OpenAIProvider({ apiKey: '...' }),
+    provider: new OpenAICompatibleProvider({ apiKey: '...' }),
     seed: 42,
   })
 )
