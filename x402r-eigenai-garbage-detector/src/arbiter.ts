@@ -1,10 +1,10 @@
 import express from "express";
 import cors from "cors";
-import { type Address, type Hex } from "viem";
+import { type Address, type Hex, erc20Abi, formatUnits } from "viem";
 import { createX402r } from "@x402r/sdk";
 import { type GarbageVerdict } from "./garbage-detector.js";
 import { garbageDetectorActions } from "./garbage-detector-plugin.js";
-import { CHAIN_ID, INFERENCE_SEED, createProvider } from "./config.js";
+import { CHAIN_ID, USDC, INFERENCE_SEED, createProvider } from "./config.js";
 import { createClients, x402rConfig, loadContext } from "./scripts/shared.js";
 
 // ---------------------------------------------------------------------------
@@ -142,9 +142,29 @@ app.get("/health", (_req, res) => {
   });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`[arbiter] Garbage detector on :${PORT}`);
   console.log(`[arbiter] Address: ${clients.account.address}`);
   console.log(`[arbiter] Provider: ${provider.name}, Seed: ${INFERENCE_SEED}`);
   if (operatorAddress) console.log(`[arbiter] Operator: ${operatorAddress}`);
+
+  // Check USDC balance if using a wallet-paying provider
+  if (provider.name.startsWith("clawrouter")) {
+    try {
+      const balance = await clients.publicClient.readContract({
+        address: USDC,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [clients.account.address],
+      });
+      const formatted = formatUnits(balance, 6);
+      if (balance === 0n) {
+        console.warn(`[arbiter] ⚠ No USDC balance — fund ${clients.account.address} to pay for inference`);
+      } else {
+        console.log(`[arbiter] USDC balance: ${formatted}`);
+      }
+    } catch {
+      // Non-critical — just skip the check
+    }
+  }
 });
