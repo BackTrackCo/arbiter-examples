@@ -13,7 +13,7 @@ import {
   declareAttestationExtension,
 } from "@x402r/evm/extensions/attestation";
 import { getChainConfig } from "@x402r/sdk";
-import { forwardToArbiter } from "./hook.js";
+import { forwardToArbiter } from "@x402r/helpers";
 import { CHAIN_ID } from "./config.js";
 import { createClients, loadContext } from "./scripts/shared.js";
 
