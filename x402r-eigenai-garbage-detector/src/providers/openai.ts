@@ -1,6 +1,16 @@
 import type { InferenceProvider, InferenceResult } from "./types.js";
 
-export class OpenAIProvider implements InferenceProvider {
+/**
+ * OpenAI-compatible chat completions provider.
+ *
+ * Works with any API that implements the OpenAI chat completions format:
+ * OpenAI, OpenRouter, Together, vLLM, LiteLLM, etc.
+ *
+ * For OpenRouter (access to Claude, Llama, Mistral, etc.):
+ *   baseUrl: "https://openrouter.ai/api/v1"
+ *   model:   "anthropic/claude-sonnet-4" | "meta-llama/llama-3.1-8b-instruct" | ...
+ */
+export class OpenAICompatibleProvider implements InferenceProvider {
   readonly name: string;
   private apiKey: string;
   private model: string;
@@ -13,7 +23,7 @@ export class OpenAIProvider implements InferenceProvider {
       /\/$/,
       "",
     );
-    this.name = `openai/${this.model}`;
+    this.name = `${new URL(this.baseUrl).hostname}/${this.model}`;
   }
 
   async evaluate(
@@ -31,6 +41,7 @@ export class OpenAIProvider implements InferenceProvider {
         model: this.model,
         max_tokens: 1024,
         seed,
+        temperature: 0,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -40,7 +51,7 @@ export class OpenAIProvider implements InferenceProvider {
 
     if (!res.ok) {
       const errText = await res.text();
-      throw new Error(`OpenAI request failed (${res.status}): ${errText}`);
+      throw new Error(`${this.name} request failed (${res.status}): ${errText}`);
     }
 
     const data = (await res.json()) as {

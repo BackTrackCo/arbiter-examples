@@ -1,7 +1,7 @@
 import type { Address } from "viem";
 import type { LocalAccount } from "viem/accounts";
 import type { InferenceProvider } from "./providers/types.js";
-import { OpenAIProvider } from "./providers/openai.js";
+import { OpenAICompatibleProvider } from "./providers/openai.js";
 import { OllamaProvider } from "./providers/ollama.js";
 import { EigenAIProvider } from "./providers/eigenai.js";
 
@@ -32,7 +32,13 @@ export const INFERENCE_SEED = Number(process.env.INFERENCE_SEED ?? 42);
  *
  * INFERENCE_PROVIDER = "openai" | "ollama" | "eigenai"
  *
- * openai:  OPENAI_API_KEY, OPENAI_MODEL (default gpt-4o-mini), OPENAI_BASE_URL
+ * openai:  Any OpenAI-compatible API (OpenAI, OpenRouter, Together, vLLM, etc.)
+ *          OPENAI_API_KEY, OPENAI_MODEL (default gpt-4o-mini), OPENAI_BASE_URL
+ *
+ *          OpenRouter example (access Claude, Llama, Mistral via one API):
+ *            OPENAI_BASE_URL=https://openrouter.ai/api/v1
+ *            OPENAI_MODEL=anthropic/claude-sonnet-4
+ *
  * ollama:  OLLAMA_MODEL (default llama3.1:8b), OLLAMA_BASE_URL (default localhost:11434)
  * eigenai: EIGENAI_GRANT_SERVER, EIGENAI_MODEL — requires wallet account for grant auth
  */
@@ -43,7 +49,7 @@ export function createProvider(account?: LocalAccount): InferenceProvider {
     case "openai": {
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) throw new Error("OPENAI_API_KEY required when INFERENCE_PROVIDER=openai");
-      return new OpenAIProvider({
+      return new OpenAICompatibleProvider({
         apiKey,
         model: process.env.OPENAI_MODEL,
         baseUrl: process.env.OPENAI_BASE_URL,
