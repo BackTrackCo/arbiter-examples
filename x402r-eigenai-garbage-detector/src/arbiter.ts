@@ -148,23 +148,23 @@ app.listen(PORT, async () => {
   console.log(`[arbiter] Provider: ${provider.name}, Seed: ${INFERENCE_SEED}`);
   if (operatorAddress) console.log(`[arbiter] Operator: ${operatorAddress}`);
 
-  // Check USDC balance if using a wallet-paying provider
-  if (provider.name.startsWith("clawrouter")) {
-    try {
-      const balance = await clients.publicClient.readContract({
-        address: USDC,
-        abi: erc20Abi,
-        functionName: "balanceOf",
+  // Check balances — arbiter needs ETH (gas for release tx) and USDC (clawrouter inference)
+  try {
+    const [ethBalance, usdcBalance] = await Promise.all([
+      clients.publicClient.getBalance({ address: clients.account.address }),
+      clients.publicClient.readContract({
+        address: USDC, abi: erc20Abi, functionName: "balanceOf",
         args: [clients.account.address],
-      });
-      const formatted = formatUnits(balance, 6);
-      if (balance === 0n) {
-        console.warn(`[arbiter] ⚠ No USDC balance — fund ${clients.account.address} to pay for inference`);
-      } else {
-        console.log(`[arbiter] USDC balance: ${formatted}`);
-      }
-    } catch {
-      // Non-critical — just skip the check
+      }),
+    ]);
+    console.log(`[arbiter] ETH: ${formatUnits(ethBalance, 18)}, USDC: ${formatUnits(usdcBalance, 6)}`);
+    if (ethBalance === 0n) {
+      console.warn(`[arbiter] ⚠ No ETH — fund ${clients.account.address} for gas (release txs)`);
     }
+    if (usdcBalance === 0n && provider.name.startsWith("clawrouter")) {
+      console.warn(`[arbiter] ⚠ No USDC — fund ${clients.account.address} to pay for inference`);
+    }
+  } catch {
+    // Non-critical — just skip the check
   }
 });
