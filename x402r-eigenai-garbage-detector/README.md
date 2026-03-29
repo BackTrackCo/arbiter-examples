@@ -71,15 +71,19 @@ CLAWROUTER_MODEL=blockrun/auto    # optional, smart routing by default
 
 See [ClawRouter](https://github.com/BlockRunAI/ClawRouter) for available models.
 
-### Ollama (local model -- best for EigenCloud TEE)
+### Ollama (local model -- no API key, best for EigenCloud TEE)
+
+```bash
+ollama pull llama3.1:8b   # one-time
+```
 
 ```env
 INFERENCE_PROVIDER=ollama
-OLLAMA_MODEL=llama3.1:8b    # optional, default llama3.1:8b
-OLLAMA_BASE_URL=http://localhost:11434  # optional
+# OLLAMA_MODEL=llama3.1:8b           # optional, default llama3.1:8b
+# OLLAMA_BASE_URL=http://localhost:11434  # optional
 ```
 
-Running inside an EigenCloud TEE container gives full attestation coverage: the TEE proves the model, prompt, and decision logic all ran untampered. This is a stronger verifiability story than deterministic replay since it doesn't depend on bit-exact model reproducibility.
+No API key, no URL config needed -- just needs Ollama running locally. Running inside an EigenCloud TEE container gives full attestation coverage: the TEE proves the model, prompt, and decision logic all ran untampered.
 
 ### EigenAI (legacy)
 
