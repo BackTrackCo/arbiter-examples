@@ -3,6 +3,7 @@ import type { LocalAccount } from "viem/accounts";
 import type { InferenceProvider } from "./providers/types.js";
 import { OpenAICompatibleProvider } from "./providers/openai.js";
 import { OllamaProvider } from "./providers/ollama.js";
+import { ClawRouterProvider } from "./providers/clawrouter.js";
 import { EigenAIProvider } from "./providers/eigenai.js";
 
 // ---------------------------------------------------------------------------
@@ -23,7 +24,7 @@ export const USDC: Address = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 // Inference provider
 // ---------------------------------------------------------------------------
 
-export type ProviderType = "openai" | "ollama" | "eigenai";
+export type ProviderType = "openai" | "ollama" | "clawrouter" | "eigenai";
 
 export const INFERENCE_SEED = Number(process.env.INFERENCE_SEED ?? 42);
 
@@ -32,15 +33,12 @@ export const INFERENCE_SEED = Number(process.env.INFERENCE_SEED ?? 42);
  *
  * INFERENCE_PROVIDER = "openai" | "ollama" | "eigenai"
  *
- * openai:  Any OpenAI-compatible API (OpenAI, OpenRouter, Together, vLLM, etc.)
- *          OPENAI_API_KEY, OPENAI_MODEL (default gpt-4o-mini), OPENAI_BASE_URL
- *
- *          OpenRouter example (access Claude, Llama, Mistral via one API):
- *            OPENAI_BASE_URL=https://openrouter.ai/api/v1
- *            OPENAI_MODEL=anthropic/claude-sonnet-4
- *
- * ollama:  OLLAMA_MODEL (default llama3.1:8b), OLLAMA_BASE_URL (default localhost:11434)
- * eigenai: EIGENAI_GRANT_SERVER, EIGENAI_MODEL — requires wallet account for grant auth
+ * openai:      Any OpenAI-compatible API (OpenAI, OpenRouter, Together, vLLM, etc.)
+ *              OPENAI_API_KEY, OPENAI_MODEL (default gpt-4o-mini), OPENAI_BASE_URL
+ * ollama:      OLLAMA_MODEL (default llama3.1:8b), OLLAMA_BASE_URL (default localhost:11434)
+ * clawrouter:  Pays for inference with USDC via x402 — no API key needed, uses arbiter wallet
+ *              CLAWROUTER_MODEL (default blockrun/auto), CLAWROUTER_BASE_URL
+ * eigenai:     EIGENAI_GRANT_SERVER, EIGENAI_MODEL — requires wallet account for grant auth
  */
 export function createProvider(account?: LocalAccount): InferenceProvider {
   const type = (process.env.INFERENCE_PROVIDER ?? "openai") as ProviderType;
@@ -62,6 +60,14 @@ export function createProvider(account?: LocalAccount): InferenceProvider {
         baseUrl: process.env.OLLAMA_BASE_URL,
       });
 
+    case "clawrouter": {
+      if (!account) throw new Error("Wallet account required for ClawRouter provider");
+      return new ClawRouterProvider(account, {
+        model: process.env.CLAWROUTER_MODEL,
+        baseUrl: process.env.CLAWROUTER_BASE_URL,
+      });
+    }
+
     case "eigenai": {
       if (!account) throw new Error("Wallet account required for EigenAI provider");
       return new EigenAIProvider(
@@ -72,7 +78,7 @@ export function createProvider(account?: LocalAccount): InferenceProvider {
     }
 
     default:
-      throw new Error(`Unknown INFERENCE_PROVIDER: ${type}. Use openai, ollama, or eigenai.`);
+      throw new Error(`Unknown INFERENCE_PROVIDER: ${type}. Use openai, ollama, clawrouter, or eigenai.`);
   }
 }
 

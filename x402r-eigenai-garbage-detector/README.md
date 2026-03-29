@@ -22,6 +22,7 @@ Three systems work together: x402r (payment escrow), AI inference (content evalu
 | Provider | Best for | Determinism | Verifiability |
 |----------|----------|-------------|---------------|
 | **OpenAI-compatible** | Any model via OpenAI/OpenRouter/Together | Probabilistic (seed hint) | Commitment hash only |
+| **ClawRouter** | No API key — pays with USDC via x402 | Probabilistic | Commitment hash only |
 | **Ollama** | EigenCloud TEE deployment | Deterministic on same hardware | TEE attestation + commitment |
 | **EigenAI** | Legacy (currently unavailable) | Deterministic | Replay-verifiable |
 
@@ -58,6 +59,17 @@ OPENAI_API_KEY=sk-or-v1-...
 OPENAI_BASE_URL=https://openrouter.ai/api/v1
 OPENAI_MODEL=anthropic/claude-sonnet-4
 ```
+
+### ClawRouter (no API key -- pays with USDC via x402)
+
+Uses the arbiter's existing wallet to pay for inference. 55+ models with smart routing. No API key or account needed.
+
+```env
+INFERENCE_PROVIDER=clawrouter
+CLAWROUTER_MODEL=blockrun/auto    # optional, smart routing by default
+```
+
+See [ClawRouter](https://github.com/BlockRunAI/ClawRouter) for available models.
 
 ### Ollama (local model -- best for EigenCloud TEE)
 
