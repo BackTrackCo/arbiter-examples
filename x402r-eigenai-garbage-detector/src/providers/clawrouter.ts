@@ -21,7 +21,7 @@ export class ClawRouterProvider implements InferenceProvider {
   private paidFetch: typeof fetch;
 
   constructor(account: LocalAccount, opts?: { model?: string; baseUrl?: string }) {
-    this.model = opts?.model ?? "blockrun/auto";
+    this.model = opts?.model ?? "openai/gpt-4o-mini";
     this.baseUrl = (opts?.baseUrl ?? "https://blockrun.ai/api/v1").replace(/\/$/, "");
     this.name = `clawrouter/${this.model}`;
 
