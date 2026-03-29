@@ -100,7 +100,7 @@ docker build -t garbage-detector .
 docker build --build-arg OLLAMA_MODEL=qwen2.5:7b -t garbage-detector .
 
 # Deploy to EigenCloud TEE
-cp .env.eigencloud .env
+cp .env.eigencloud.example .env
 ecloud compute app deploy
 ```
 
