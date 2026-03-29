@@ -51,18 +51,14 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
-// POST /verify — evaluate content, release on PASS (called by onAfterSettle hook)
+// POST /verify — evaluate content, release on PASS (called by @x402r/helpers forwardToArbiter)
 app.post("/verify", async (req, res) => {
-  const {
-    responseBody,
-    transaction = "unknown",
-    network = `eip155:${CHAIN_ID}`,
-    scheme = "escrow",
-    paymentInfo,
-  } = req.body;
+  const { responseBody, transaction, paymentPayload } = req.body;
   if (!responseBody) { res.status(400).json({ error: "responseBody is required" }); return; }
 
-  console.log(`[verify] tx=${transaction} scheme=${scheme}`);
+  const scheme = paymentPayload?.accepted?.scheme ?? "escrow";
+  const network = paymentPayload?.accepted?.network ?? `eip155:${CHAIN_ID}`;
+  console.log(`[verify] tx=${transaction ?? "unknown"} scheme=${scheme}`);
   try {
     const opAddr = operatorAddress;
     if (!opAddr) throw new Error("No operator address — run setup or set OPERATOR_ADDRESS");
@@ -79,21 +75,13 @@ app.post("/verify", async (req, res) => {
       verdict: gv, transaction, network, arbiter: clients.account.address, timestamp: Date.now(),
     };
 
-    if (scheme === "escrow" && gv.verdict === "PASS" && paymentInfo) {
+    const rawPaymentInfo = paymentPayload?.payload?.paymentInfo;
+    if (scheme === "escrow" && gv.verdict === "PASS" && rawPaymentInfo) {
       try {
         const pi = {
-          operator: paymentInfo.operator,
-          payer: paymentInfo.payer,
-          receiver: paymentInfo.receiver,
-          token: paymentInfo.token,
-          maxAmount: BigInt(paymentInfo.maxAmount),
-          preApprovalExpiry: paymentInfo.preApprovalExpiry,
-          authorizationExpiry: paymentInfo.authorizationExpiry,
-          refundExpiry: paymentInfo.refundExpiry,
-          minFeeBps: paymentInfo.minFeeBps,
-          maxFeeBps: paymentInfo.maxFeeBps,
-          feeReceiver: paymentInfo.feeReceiver,
-          salt: BigInt(paymentInfo.salt),
+          ...rawPaymentInfo,
+          maxAmount: BigInt(rawPaymentInfo.maxAmount),
+          salt: BigInt(rawPaymentInfo.salt),
         };
         stored.releaseHash = await sdk.garbageDetector.release(pi);
         console.log(`[verify] Released: ${stored.releaseHash}`);
