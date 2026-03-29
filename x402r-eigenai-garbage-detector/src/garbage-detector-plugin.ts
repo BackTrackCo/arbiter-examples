@@ -1,6 +1,6 @@
 import type { X402r, PaymentInfo } from "@x402r/sdk";
 import type { Hash } from "viem";
-import type { EigenAIClient } from "./eigenai-client.js";
+import type { InferenceProvider } from "./providers/types.js";
 import { detectGarbage, type GarbageVerdict } from "./garbage-detector.js";
 
 // ---------------------------------------------------------------------------
@@ -8,7 +8,7 @@ import { detectGarbage, type GarbageVerdict } from "./garbage-detector.js";
 // ---------------------------------------------------------------------------
 
 export interface GarbageDetectorConfig {
-  eigenai: EigenAIClient;
+  provider: InferenceProvider;
   seed: number;
 }
 
@@ -39,7 +39,7 @@ export function garbageDetectorActions(config: GarbageDetectorConfig) {
   return (client: X402r): GarbageDetectorActions => ({
     garbageDetector: {
       evaluate(responseBody) {
-        return detectGarbage(config.eigenai, responseBody, config.seed);
+        return detectGarbage(config.provider, responseBody, config.seed);
       },
 
       release(paymentInfo, amount) {
@@ -47,7 +47,7 @@ export function garbageDetectorActions(config: GarbageDetectorConfig) {
       },
 
       async evaluateAndRelease(responseBody, paymentInfo, amount) {
-        const verdict = await detectGarbage(config.eigenai, responseBody, config.seed);
+        const verdict = await detectGarbage(config.provider, responseBody, config.seed);
         let releaseHash: Hash | null = null;
         if (verdict.verdict === "PASS") {
           releaseHash = await client.payment.release(
