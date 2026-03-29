@@ -1,5 +1,5 @@
 import { toClientEvmSigner } from "@x402/evm";
-import { EscrowEvmScheme } from "@x402r/evm/escrow/client";
+import { CommerceEvmScheme } from "@x402r/evm/commerce/client";
 import { wrapFetchWithPayment } from "@x402/fetch";
 import { x402Client } from "@x402/core/client";
 import { CHAIN_ID } from "./config.js";
@@ -22,7 +22,7 @@ async function main() {
 
   const clientSigner = toClientEvmSigner(account);
   const client = new x402Client();
-  client.register(networkId, new EscrowEvmScheme(clientSigner));
+  client.register(networkId, new CommerceEvmScheme(clientSigner));
   const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 
   // --- 1. Valid response ---

@@ -56,7 +56,7 @@ app.post("/verify", async (req, res) => {
   const { responseBody, transaction, paymentPayload } = req.body;
   if (!responseBody) { res.status(400).json({ error: "responseBody is required" }); return; }
 
-  const scheme = paymentPayload?.accepted?.scheme ?? "escrow";
+  const scheme = paymentPayload?.accepted?.scheme ?? "commerce";
   const network = paymentPayload?.accepted?.network ?? `eip155:${CHAIN_ID}`;
   console.log(`[verify] tx=${transaction ?? "unknown"} scheme=${scheme}`);
   try {
@@ -76,7 +76,7 @@ app.post("/verify", async (req, res) => {
     };
 
     const rawPaymentInfo = paymentPayload?.payload?.paymentInfo;
-    if (scheme === "escrow" && gv.verdict === "PASS" && rawPaymentInfo) {
+    if (scheme === "commerce" && gv.verdict === "PASS" && rawPaymentInfo) {
       try {
         const pi = {
           ...rawPaymentInfo,

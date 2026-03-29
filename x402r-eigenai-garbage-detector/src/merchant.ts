@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient } from "@x402/core/server";
-import { EscrowServerScheme } from "@x402r/evm/escrow/server";
+import { CommerceServerScheme } from "@x402r/evm/commerce/server";
 import {
   createEIP712OfferReceiptIssuer,
   createOfferReceiptExtension,
@@ -40,7 +40,7 @@ const issuer = createEIP712OfferReceiptIssuer(
 
 const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
 const resourceServer = new x402ResourceServer(facilitatorClient)
-  .register(networkId, new EscrowServerScheme())
+  .register(networkId, new CommerceServerScheme())
   .registerExtension(createOfferReceiptExtension(issuer))
   .registerExtension(createAttestationExtension(ARBITER_URL))
   .onAfterSettle(forwardToArbiter(ARBITER_URL));
@@ -51,7 +51,7 @@ app.use(cors());
 app.use(paymentMiddleware({
   "GET /weather": {
     accepts: [{
-      scheme: "escrow" as const,
+      scheme: "commerce" as const,
       network: networkId,
       price: "$0.01",
       payTo: account.address,
@@ -67,7 +67,7 @@ app.use(paymentMiddleware({
   },
   "GET /garbage": {
     accepts: [{
-      scheme: "escrow" as const,
+      scheme: "commerce" as const,
       network: networkId,
       price: "$0.01",
       payTo: account.address,

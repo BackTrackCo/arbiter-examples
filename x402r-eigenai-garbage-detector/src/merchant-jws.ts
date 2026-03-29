@@ -3,7 +3,7 @@ import cors from "cors";
 import crypto from "node:crypto";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient } from "@x402/core/server";
-import { EscrowServerScheme } from "@x402r/evm/escrow/server";
+import { CommerceServerScheme } from "@x402r/evm/commerce/server";
 import {
   createJWSOfferReceiptIssuer,
   createOfferReceiptExtension,
@@ -55,7 +55,7 @@ const issuer = createJWSOfferReceiptIssuer("did:web:localhost#key-1", jwsSigner)
 
 const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
 const resourceServer = new x402ResourceServer(facilitatorClient)
-  .register(networkId, new EscrowServerScheme())
+  .register(networkId, new CommerceServerScheme())
   .registerExtension(createOfferReceiptExtension(issuer))
   .registerExtension(createAttestationExtension(ARBITER_URL))
   .onAfterSettle(forwardToArbiter(ARBITER_URL));
@@ -66,7 +66,7 @@ app.use(cors());
 app.use(paymentMiddleware({
   "GET /weather": {
     accepts: [{
-      scheme: "escrow" as const,
+      scheme: "commerce" as const,
       network: networkId,
       price: "$0.01",
       payTo: MERCHANT_ADDRESS,
@@ -82,7 +82,7 @@ app.use(paymentMiddleware({
   },
   "GET /garbage": {
     accepts: [{
-      scheme: "escrow" as const,
+      scheme: "commerce" as const,
       network: networkId,
       price: "$0.01",
       payTo: MERCHANT_ADDRESS,
