@@ -73,17 +73,38 @@ See [ClawRouter](https://github.com/BlockRunAI/ClawRouter) for available models.
 
 ### Ollama (local model -- no API key, best for EigenCloud TEE)
 
-```bash
-ollama pull llama3.1:8b   # one-time
-```
-
 ```env
 INFERENCE_PROVIDER=ollama
 # OLLAMA_MODEL=llama3.1:8b           # optional, default llama3.1:8b
 # OLLAMA_BASE_URL=http://localhost:11434  # optional
 ```
 
-No API key, no URL config needed -- just needs Ollama running locally. Running inside an EigenCloud TEE container gives full attestation coverage: the TEE proves the model, prompt, and decision logic all ran untampered.
+No API key, no URL config needed -- just needs Ollama running with the model pulled.
+
+**Local dev:**
+
+```bash
+ollama pull llama3.1:8b
+ollama serve   # if not already running
+```
+
+**EigenCloud TEE deployment:**
+
+For verifiable inference, bundle Ollama + model weights inside the Docker container and deploy to EigenCloud TEE via `ecloud compute app deploy`. See [x402r-arbiter-eigencloud](../../x402r-arbiter-eigencloud/) for the existing TEE deployment pattern (Dockerfile, `.env.eigencloud`, `ecloud` CLI).
+
+```dockerfile
+# Example: extend the arbiter Dockerfile with Ollama
+FROM ollama/ollama AS model
+RUN ollama pull llama3.1:8b
+
+FROM node:22-slim
+COPY --from=model /root/.ollama /root/.ollama
+# ... arbiter build steps ...
+# Start both Ollama and arbiter
+CMD ollama serve & node dist/arbiter.js
+```
+
+The TEE attestation covers the entire container -- model weights, prompt, and decision logic -- proving the arbiter ran untampered.
 
 ### EigenAI (legacy)
 
