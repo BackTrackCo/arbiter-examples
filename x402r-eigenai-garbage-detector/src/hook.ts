@@ -1,20 +1,21 @@
 import type { SettleResultContext } from "@x402/core/server";
 
-interface HTTPTransportContext {
-  request: unknown;
-  responseBody?: Buffer;
-}
-
 /**
- * Creates an `onAfterSettle` hook that forwards the response body to the
- * garbage detection arbiter. Fire-and-forget — does not block the response.
+ * Creates an `onAfterSettle` hook that forwards the response body + paymentInfo
+ * to the garbage detection arbiter. Fire-and-forget — does not block the response.
+ *
+ * This extends the pattern from `@x402r/helpers` `forwardToArbiter()` by also
+ * forwarding `paymentInfo` from the escrow payload, which the arbiter needs to
+ * call `release()` on PASS verdicts.
  */
 export function forwardToArbiter(arbiterUrl: string) {
   return async (context: SettleResultContext): Promise<void> => {
     if (!context.result.success) return;
     if (context.requirements.scheme !== "escrow") return;
 
-    const transportCtx = context.transportContext as HTTPTransportContext | undefined;
+    const transportCtx = context.transportContext as
+      | { responseBody?: { toString(encoding: string): string } }
+      | undefined;
     const responseBody = transportCtx?.responseBody;
     if (!responseBody) return;
 
@@ -29,9 +30,9 @@ export function forwardToArbiter(arbiterUrl: string) {
         responseBody: responseBody.toString("utf-8"),
         network: context.requirements.network,
         transaction: context.result.transaction,
-        scheme: context.requirements.scheme,
+        scheme: "escrow",
         paymentInfo,
       }),
-    }).catch((err) => console.error("[garbage-detection] arbiter post failed:", err));
+    }).catch((err) => console.error("[forwardToArbiter] arbiter post failed:", err));
   };
 }

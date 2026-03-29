@@ -1,6 +1,6 @@
-# x402r + EigenAI Garbage Detection Example
+# x402r AI Garbage Detection Example
 
-Garbage detection arbiter for x402r refundable payments using [EigenAI](https://eigenai.xyz) deterministic inference and the `.extend(garbageDetectorActions(config))` plugin pattern.
+Garbage detection arbiter for x402r refundable payments. Supports multiple inference providers (OpenAI, Ollama for TEE, EigenAI) via the `.extend(garbageDetectorActions(config))` plugin pattern.
 
 ## Quick Start
 
@@ -13,22 +13,60 @@ pnpm run client             # make paid requests and check verdicts (separate te
 
 ## Architecture
 
-Three systems work together: x402r (payment escrow), EigenAI (content evaluation), and x402 middleware (HTTP payment flow).
+Three systems work together: x402r (payment escrow), AI inference (content evaluation), and x402 middleware (HTTP payment flow).
 
 **x402r (on-chain)** -- USDC payment flows into `AuthCaptureEscrow`, managed by `PaymentOperator`. `StaticAddressCondition(arbiter)` gates release -- only the arbiter can release escrowed funds. `EscrowPeriod` gates refund -- if arbiter does nothing, funds auto-refund after the escrow window.
 
-**EigenAI (off-chain)** -- Deterministic LLM inference with a locked seed. The arbiter evaluates HTTP response bodies against a garbage detection prompt. A keccak256 commitment hash (prompt + response + seed) makes every evaluation verifiable -- anyone can replay the same inputs and get the same verdict.
+**AI Inference (off-chain)** -- The arbiter evaluates HTTP response bodies against a garbage detection prompt. A keccak256 commitment hash (prompt + response + seed) makes every evaluation auditable. Three provider options:
 
-**x402 middleware (HTTP)** -- `onAfterSettle` hook forwards the response body to the arbiter after each successful settlement. Fire-and-forget -- does not block the client response. Merchant also signs EIP-712 receipts (offer-receipt extension) so clients have cryptographic proof of what was delivered.
+| Provider | Best for | Determinism | Verifiability |
+|----------|----------|-------------|---------------|
+| **OpenAI** | Quick setup, low cost | Probabilistic (seed hint) | Commitment hash only |
+| **Ollama** | EigenCloud TEE deployment | Deterministic on same hardware | TEE attestation + commitment |
+| **EigenAI** | Legacy (currently unavailable) | Deterministic | Replay-verifiable |
+
+**x402 middleware (HTTP)** -- `onAfterSettle` hook forwards the response body to the arbiter after each successful settlement. Fire-and-forget -- does not block the client response.
 
 ### Flow
 
-1. **Client** sends a paid request through x402 middleware -- `wrapFetchWithPayment` handles the 402 → sign → retry flow
+1. **Client** sends a paid request through x402 middleware -- `wrapFetchWithPayment` handles the 402 -> sign -> retry flow
 2. **Merchant** serves the response, x402 settles the escrow payment via facilitator, signs an EIP-712 receipt (delivery proof)
 3. **Hook** fires `forwardToArbiter()` which POSTs the response body to the arbiter (async, fire-and-forget)
-4. **Arbiter** evaluates the response via EigenAI:
+4. **Arbiter** evaluates the response via the configured provider:
    - **PASS** -- calls `sdk.garbageDetector.release(paymentInfo)` to release escrowed funds to merchant
    - **FAIL** -- does nothing, escrow period expires, anyone calls `refundInEscrow()` for automatic refund
+
+## Inference Providers
+
+Set `INFERENCE_PROVIDER` in `.env`:
+
+### OpenAI (default)
+
+```env
+INFERENCE_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini    # optional, default gpt-4o-mini
+```
+
+### Ollama (local model -- best for EigenCloud TEE)
+
+```env
+INFERENCE_PROVIDER=ollama
+OLLAMA_MODEL=llama3.1:8b    # optional, default llama3.1:8b
+OLLAMA_BASE_URL=http://localhost:11434  # optional
+```
+
+Running inside an EigenCloud TEE container gives full attestation coverage: the TEE proves the model, prompt, and decision logic all ran untampered. This is a stronger verifiability story than deterministic replay since it doesn't depend on bit-exact model reproducibility.
+
+### EigenAI (legacy)
+
+```env
+INFERENCE_PROVIDER=eigenai
+EIGENAI_GRANT_SERVER=https://determinal-api.eigenarcade.com
+EIGENAI_MODEL=gpt-oss-120b-f16
+```
+
+> **Note:** EigenAI inference API is currently unavailable. The provider is kept for when/if access is restored.
 
 ## Prerequisites
 
@@ -38,7 +76,7 @@ Three systems work together: x402r (payment escrow), EigenAI (content evaluation
 ```bash
 pnpm install
 cp .env.example .env
-# Fill in PRIVATE_KEY
+# Fill in PRIVATE_KEY + provider config
 ```
 
 > **Note:** This example links to workspace `@x402r/core` and `@x402r/sdk` packages.
@@ -50,11 +88,11 @@ cp .env.example .env
 
 ```typescript
 import { garbageDetectorActions } from './garbage-detector-plugin.js'
-import { EigenAIClient } from './eigenai-client.js'
+import { OpenAIProvider } from './providers/openai.js'
 
 const sdk = createX402r({ ... }).extend(
   garbageDetectorActions({
-    eigenai: new EigenAIClient(account, grantServer, model),
+    provider: new OpenAIProvider({ apiKey: '...' }),
     seed: 42,
   })
 )
@@ -62,7 +100,7 @@ const sdk = createX402r({ ... }).extend(
 
 | Method | Description |
 |--------|-------------|
-| **`evaluate(responseBody)`** | Run EigenAI garbage detection, return verdict + commitment |
+| **`evaluate(responseBody)`** | Run garbage detection, return verdict + commitment |
 | **`release(paymentInfo, amount?)`** | Release escrowed funds (arbiter calls on PASS) |
 | **`evaluateAndRelease(responseBody, paymentInfo, amount?)`** | Evaluate + release in one call |
 

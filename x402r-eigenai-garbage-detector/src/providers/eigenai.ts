@@ -1,9 +1,5 @@
 import type { LocalAccount } from "viem/accounts";
-
-export interface EigenAIResult {
-  rawResponse: string;
-  displayContent: string;
-}
+import type { InferenceProvider, InferenceResult } from "./types.js";
 
 function stripTags(text: string): string {
   let cleaned = text.replace(/^<\|channel\|>.*?<\|message\|>/s, "");
@@ -11,7 +7,12 @@ function stripTags(text: string): string {
   return cleaned.trim();
 }
 
-export class EigenAIClient {
+/**
+ * EigenAI deterministic inference via wallet-grant auth.
+ * Requires access to determinal-api.eigenarcade.com (currently unavailable).
+ */
+export class EigenAIProvider implements InferenceProvider {
+  readonly name: string;
   private grantServer: string;
   private model: string;
   private account: LocalAccount;
@@ -20,6 +21,7 @@ export class EigenAIClient {
     this.account = account;
     this.grantServer = grantServer;
     this.model = model;
+    this.name = `eigenai/${this.model}`;
   }
 
   private async getGrant() {
@@ -30,7 +32,11 @@ export class EigenAIClient {
     return { message: msgData.message, signature };
   }
 
-  async evaluate(systemPrompt: string, userPrompt: string, seed: number): Promise<EigenAIResult> {
+  async evaluate(
+    systemPrompt: string,
+    userPrompt: string,
+    seed: number,
+  ): Promise<InferenceResult> {
     const grant = await this.getGrant();
     const res = await fetch(`${this.grantServer}/api/chat/completions`, {
       method: "POST",
@@ -52,7 +58,9 @@ export class EigenAIClient {
       const errText = await res.text();
       throw new Error(`EigenAI request failed (${res.status}): ${errText}`);
     }
-    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
     const rawResponse = data.choices?.[0]?.message?.content ?? "";
     return { rawResponse, displayContent: stripTags(rawResponse) };
   }

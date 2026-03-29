@@ -1,5 +1,5 @@
 import { keccak256, toBytes, encodePacked, type Hex } from "viem";
-import type { EigenAIClient } from "./eigenai-client.js";
+import type { InferenceProvider } from "./providers/types.js";
 
 const MAX_BODY_LENGTH = 4096;
 
@@ -72,7 +72,7 @@ function parseDecision(raw: string): { verdict: VerdictResult; reason: string } 
 }
 
 export async function detectGarbage(
-  eigenai: EigenAIClient,
+  provider: InferenceProvider,
   responseBody: string,
   seed: number,
 ): Promise<GarbageVerdict> {
@@ -81,7 +81,7 @@ export async function detectGarbage(
     : responseBody;
   const userPrompt = `Evaluate this HTTP response body:\n\n---\n${truncated}\n---`;
 
-  const result = await eigenai.evaluate(SYSTEM_PROMPT, userPrompt, seed);
+  const result = await provider.evaluate(SYSTEM_PROMPT, userPrompt, seed);
   const decision = parseDecision(result.displayContent);
   const fullPrompt = SYSTEM_PROMPT + "\n\n" + userPrompt;
   const commitment = createCommitment(fullPrompt, seed, result.rawResponse);
