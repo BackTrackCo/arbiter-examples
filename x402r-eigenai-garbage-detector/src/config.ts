@@ -41,7 +41,7 @@ export const INFERENCE_SEED = Number(process.env.INFERENCE_SEED ?? 42);
  * eigenai:     EIGENAI_GRANT_SERVER, EIGENAI_MODEL — requires wallet account for grant auth
  */
 export function createProvider(account?: LocalAccount): InferenceProvider {
-  const type = (process.env.INFERENCE_PROVIDER ?? "openai") as ProviderType;
+  const type = (process.env.INFERENCE_PROVIDER ?? "clawrouter") as ProviderType;
 
   switch (type) {
     case "openai": {
