@@ -90,21 +90,21 @@ ollama serve   # if not already running
 
 **EigenCloud TEE deployment:**
 
-For verifiable inference, bundle Ollama + model weights inside the Docker container and deploy to EigenCloud TEE via `ecloud compute app deploy`. See [x402r-arbiter-eigencloud](../../x402r-arbiter-eigencloud/) for the existing TEE deployment pattern (Dockerfile, `.env.eigencloud`, `ecloud` CLI).
+The included `Dockerfile` bundles Ollama + model weights in a multi-stage build. The `entrypoint.sh` starts Ollama in the background before launching the arbiter.
 
-```dockerfile
-# Example: extend the arbiter Dockerfile with Ollama
-FROM ollama/ollama AS model
-RUN ollama pull llama3.1:8b
+```bash
+# Build with default model (llama3.1:8b)
+docker build -t garbage-detector .
 
-FROM node:22-slim
-COPY --from=model /root/.ollama /root/.ollama
-# ... arbiter build steps ...
-# Start both Ollama and arbiter
-CMD ollama serve & node dist/arbiter.js
+# Or specify a different model
+docker build --build-arg OLLAMA_MODEL=qwen2.5:7b -t garbage-detector .
+
+# Deploy to EigenCloud TEE
+cp .env.eigencloud .env
+ecloud compute app deploy
 ```
 
-The TEE attestation covers the entire container -- model weights, prompt, and decision logic -- proving the arbiter ran untampered.
+TEE attestation covers the entire container -- model weights, prompt, and decision logic -- proving the arbiter ran untampered. See [x402r-arbiter-eigencloud](../../x402r-arbiter-eigencloud/) for the `ecloud` CLI reference.
 
 ### EigenAI (legacy)
 
