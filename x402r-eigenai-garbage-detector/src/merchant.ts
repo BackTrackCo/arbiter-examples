@@ -8,6 +8,10 @@ import {
   createOfferReceiptExtension,
   declareOfferReceiptExtension,
 } from "@x402/extensions/offer-receipt";
+import {
+  createAttestationExtension,
+  declareAttestationExtension,
+} from "@x402r/evm/extensions/attestation";
 import { getChainConfig } from "@x402r/sdk";
 import { forwardToArbiter } from "./hook.js";
 import { CHAIN_ID } from "./config.js";
@@ -38,6 +42,7 @@ const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
 const resourceServer = new x402ResourceServer(facilitatorClient)
   .register(networkId, new EscrowServerScheme())
   .registerExtension(createOfferReceiptExtension(issuer))
+  .registerExtension(createAttestationExtension(ARBITER_URL))
   .onAfterSettle(forwardToArbiter(ARBITER_URL));
 
 const app = express();
@@ -58,6 +63,7 @@ app.use(paymentMiddleware({
       },
     }],
     ...declareOfferReceiptExtension({ includeTxHash: true }),
+    ...declareAttestationExtension(),
   },
   "GET /garbage": {
     accepts: [{
@@ -73,6 +79,7 @@ app.use(paymentMiddleware({
       },
     }],
     ...declareOfferReceiptExtension({ includeTxHash: true }),
+    ...declareAttestationExtension(),
   },
 }, resourceServer));
 
