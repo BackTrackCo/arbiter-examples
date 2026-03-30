@@ -20,6 +20,9 @@ function parseChainIds(): number[] {
 
 export const CHAIN_IDS = parseChainIds();
 
+/** Default chain for single-chain scripts (client, merchant, deploy). */
+export const CHAIN_ID = CHAIN_IDS[0];
+
 /** Resolve a viem Chain object from a chain ID. */
 export function getViemChain(chainId: number): Chain {
   return extractChain({
