@@ -76,8 +76,12 @@ function parseDecision(raw: string): { verdict: VerdictResult; reason: string } 
 }
 
 // ---------------------------------------------------------------------------
-// Pre-LLM heuristics — catch obvious garbage without an inference call.
-// Returns a reason string on FAIL, or null to defer to the LLM.
+// Pre-LLM heuristics (L0) — catch obvious garbage without an inference call.
+// Returns a reason string on FAIL, or null to defer to the LLM (L1).
+//
+// TODO: L0 and L1 are bundled in one arbiter for now. Once arbiter
+// coordination is figured out, these should be separate arbiters with
+// independent SignatureConditions so operators can mix and match.
 // ---------------------------------------------------------------------------
 
 const ERROR_PATTERNS = [
