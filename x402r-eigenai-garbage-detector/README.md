@@ -100,7 +100,7 @@ docker build -t garbage-detector .
 docker build --build-arg OLLAMA_MODEL=qwen2.5:7b -t garbage-detector .
 
 # Deploy to EigenCloud TEE
-cp .env.eigencloud.example .env
+cp .env.eigencloud.example .env.arbiter
 ecloud compute app deploy
 ```
 
@@ -123,8 +123,10 @@ EIGENAI_MODEL=gpt-oss-120b-f16
 
 ```bash
 pnpm install
-cp .env.example .env
-# Fill in PRIVATE_KEY + provider config
+cp .env.arbiter.example .env.arbiter
+cp .env.merchant.example .env.merchant
+cp .env.client.example .env.client
+# Fill in PRIVATE_KEY in each + operator addresses from setup
 ```
 
 > **Note:** This example links to workspace `@x402r/core` and `@x402r/sdk` packages.
