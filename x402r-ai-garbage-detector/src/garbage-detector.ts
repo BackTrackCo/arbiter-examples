@@ -81,7 +81,7 @@ function parseDecision(raw: string): { verdict: VerdictResult; reason: string } 
 //
 // TODO: L0 and L1 are bundled in one arbiter for now. Once arbiter
 // coordination is figured out, these should be separate arbiters with
-// independent SignatureConditions so operators can mix and match.
+// independent StaticAddressConditions so operators can mix and match.
 // ---------------------------------------------------------------------------
 
 const ERROR_PATTERNS = [
