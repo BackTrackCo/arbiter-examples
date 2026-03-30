@@ -68,7 +68,9 @@ function parseDecision(raw: string): { verdict: VerdictResult; reason: string } 
       } catch { /* fall through */ }
     }
   }
-  return { verdict: "PASS", reason: "Could not parse EigenAI response; defaulting to PASS" };
+  // Fail-open: unparseable inference response defaults to PASS (protects merchants
+  // from arbiter/provider issues — escrowed funds are released rather than frozen).
+  return { verdict: "PASS", reason: "Could not parse inference response; defaulting to PASS" };
 }
 
 export async function detectGarbage(

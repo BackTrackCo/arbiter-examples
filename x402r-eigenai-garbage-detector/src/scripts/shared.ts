@@ -1,25 +1,58 @@
 import type { PaymentInfo } from "@x402r/core";
-import type { Address } from "viem";
+import type { Address, Chain, PublicClient, WalletClient } from "viem";
 import { createPublicClient, createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { baseSepolia } from "viem/chains";
 import { existsSync, readFileSync } from "node:fs";
-import { BASE_SEPOLIA_RPC, CHAIN_ID, CONTEXT_FILE } from "../config.js";
+import { CHAIN_IDS, CONTEXT_FILE, getViemChain } from "../config.js";
 
 // ---------------------------------------------------------------------------
-// Viem clients
+// Per-chain viem clients
 // ---------------------------------------------------------------------------
+
+export interface ChainClients {
+  chain: Chain;
+  publicClient: PublicClient;
+  walletClient: WalletClient;
+}
 
 export function createClients() {
   const privateKey = process.env.PRIVATE_KEY as `0x${string}`;
   if (!privateKey) throw new Error("PRIVATE_KEY env var required");
 
   const account = privateKeyToAccount(privateKey);
-  const transport = http(BASE_SEPOLIA_RPC);
-  const publicClient = createPublicClient({ chain: baseSepolia, transport });
-  const walletClient = createWalletClient({ account, chain: baseSepolia, transport });
 
-  return { account, publicClient, walletClient };
+  const chains = new Map<number, ChainClients>();
+  for (const chainId of CHAIN_IDS) {
+    const chain = getViemChain(chainId);
+    const rpcEnv = process.env[`RPC_${chainId}`];
+    const transport = http(rpcEnv);
+    chains.set(chainId, {
+      chain,
+      publicClient: createPublicClient({ chain, transport }),
+      walletClient: createWalletClient({ account, chain, transport }),
+    });
+  }
+
+  // Default to the first chain for backward compat
+  const defaultChainId = CHAIN_IDS[0];
+  const defaultClients = chains.get(defaultChainId)!;
+
+  return {
+    account,
+    chains,
+    defaultChainId,
+    // Backward compat — used by deploy scripts and single-chain paths
+    publicClient: defaultClients.publicClient,
+    walletClient: defaultClients.walletClient,
+  };
+}
+
+/** Get clients for a specific chain, falling back to default. */
+export function getChainClients(
+  allClients: ReturnType<typeof createClients>,
+  chainId: number,
+): ChainClients {
+  return allClients.chains.get(chainId) ?? allClients.chains.get(allClients.defaultChainId)!;
 }
 
 // ---------------------------------------------------------------------------
@@ -29,12 +62,15 @@ export function createClients() {
 export function x402rConfig(
   addresses: Pick<SavedContext, "operatorAddress" | "escrowPeriodAddress">,
   clients: ReturnType<typeof createClients>,
+  chainId?: number,
 ) {
+  const cid = chainId ?? clients.defaultChainId;
+  const cc = getChainClients(clients, cid);
   return {
-    publicClient: clients.publicClient,
-    walletClient: clients.walletClient,
+    publicClient: cc.publicClient,
+    walletClient: cc.walletClient,
     operatorAddress: addresses.operatorAddress,
-    chainId: CHAIN_ID,
+    chainId: cid,
     escrowPeriodAddress: addresses.escrowPeriodAddress,
   };
 }

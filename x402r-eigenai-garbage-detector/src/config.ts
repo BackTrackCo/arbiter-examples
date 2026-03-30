@@ -1,5 +1,8 @@
-import type { Address } from "viem";
+import type { Address, Chain } from "viem";
 import type { LocalAccount } from "viem/accounts";
+import { extractChain } from "viem";
+import * as viemChains from "viem/chains";
+import { getChainConfig } from "@x402r/sdk";
 import type { InferenceProvider } from "./providers/types.js";
 import { OpenAICompatibleProvider } from "./providers/openai.js";
 import { OllamaProvider } from "./providers/ollama.js";
@@ -7,18 +10,28 @@ import { ClawRouterProvider } from "./providers/clawrouter.js";
 import { EigenAIProvider } from "./providers/eigenai.js";
 
 // ---------------------------------------------------------------------------
-// Chain
+// Chains — supports multiple chains via comma-separated CHAIN_IDS env var
 // ---------------------------------------------------------------------------
 
-export const CHAIN_ID = 84532;
-export const BASE_SEPOLIA_RPC =
-  process.env.BASE_SEPOLIA_RPC ?? undefined; // uses viem default if unset
+function parseChainIds(): number[] {
+  const raw = process.env.CHAIN_IDS ?? process.env.CHAIN_ID ?? "84532";
+  return raw.split(",").map((s) => Number(s.trim())).filter(Boolean);
+}
 
-// ---------------------------------------------------------------------------
-// Tokens
-// ---------------------------------------------------------------------------
+export const CHAIN_IDS = parseChainIds();
 
-export const USDC: Address = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+/** Resolve a viem Chain object from a chain ID. */
+export function getViemChain(chainId: number): Chain {
+  return extractChain({
+    chains: Object.values(viemChains),
+    id: chainId as any,
+  });
+}
+
+/** Get USDC address for a chain from SDK config. */
+export function getUsdcAddress(chainId: number): Address {
+  return getChainConfig(chainId).usdc;
+}
 
 // ---------------------------------------------------------------------------
 // Inference provider
@@ -31,13 +44,13 @@ export const INFERENCE_SEED = Number(process.env.INFERENCE_SEED ?? 42);
 /**
  * Create an inference provider from environment variables.
  *
- * INFERENCE_PROVIDER = "openai" | "ollama" | "eigenai"
+ * INFERENCE_PROVIDER = "clawrouter" | "openai" | "ollama" | "eigenai"
  *
+ * clawrouter:  Pays for inference with USDC via x402 — no API key needed, uses arbiter wallet
+ *              CLAWROUTER_MODEL (default openai/gpt-4o-mini), CLAWROUTER_BASE_URL
  * openai:      Any OpenAI-compatible API (OpenAI, OpenRouter, Together, vLLM, etc.)
  *              OPENAI_API_KEY, OPENAI_MODEL (default gpt-4o-mini), OPENAI_BASE_URL
  * ollama:      OLLAMA_MODEL (default llama3.1:8b), OLLAMA_BASE_URL (default localhost:11434)
- * clawrouter:  Pays for inference with USDC via x402 — no API key needed, uses arbiter wallet
- *              CLAWROUTER_MODEL (default blockrun/auto), CLAWROUTER_BASE_URL
  * eigenai:     EIGENAI_GRANT_SERVER, EIGENAI_MODEL — requires wallet account for grant auth
  */
 export function createProvider(account?: LocalAccount): InferenceProvider {
@@ -78,7 +91,7 @@ export function createProvider(account?: LocalAccount): InferenceProvider {
     }
 
     default:
-      throw new Error(`Unknown INFERENCE_PROVIDER: ${type}. Use openai, ollama, clawrouter, or eigenai.`);
+      throw new Error(`Unknown INFERENCE_PROVIDER: ${type}. Use clawrouter, openai, ollama, or eigenai.`);
   }
 }
 
