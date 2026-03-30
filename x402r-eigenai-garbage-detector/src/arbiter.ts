@@ -4,14 +4,14 @@ import { type Address, type Hex, erc20Abi, formatUnits } from "viem";
 import { createX402r } from "@x402r/sdk";
 import { type GarbageVerdict } from "./garbage-detector.js";
 import { garbageDetectorActions } from "./garbage-detector-plugin.js";
-import { CHAIN_ID, USDC, INFERENCE_SEED, createProvider } from "./config.js";
-import { createClients, x402rConfig, loadContext } from "./scripts/shared.js";
+import { CHAIN_IDS, INFERENCE_SEED, createProvider, getUsdcAddress } from "./config.js";
+import { createClients, getChainClients, x402rConfig, loadContext } from "./scripts/shared.js";
 
 // ---------------------------------------------------------------------------
 // Arbiter: Evaluate response bodies via AI, release on PASS
 //
-// Supports multiple inference providers (openai, ollama, eigenai).
-// Set INFERENCE_PROVIDER env var to choose. Default: openai.
+// Supports multiple chains (CHAIN_IDS env var) and inference providers
+// (clawrouter, openai, ollama, eigenai). Default: clawrouter.
 //
 // Endpoints:
 //   POST /verify            — evaluate content + release on PASS
@@ -34,6 +34,7 @@ try {
   escrowPeriodAddress = ctx.escrowPeriodAddress;
 } catch {
   operatorAddress = process.env.OPERATOR_ADDRESS as Address | undefined;
+  escrowPeriodAddress = process.env.ESCROW_PERIOD_ADDRESS as Address | undefined;
 }
 
 interface StoredVerdict {
@@ -51,21 +52,27 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
+/** Parse chain ID from eip155 network string (e.g. "eip155:84532" → 84532). */
+function parseChainId(network: string): number {
+  const match = network.match(/^eip155:(\d+)$/);
+  return match ? Number(match[1]) : CHAIN_IDS[0];
+}
+
 // POST /verify — evaluate content, release on PASS (called by @x402r/helpers forwardToArbiter)
 app.post("/verify", async (req, res) => {
   const { responseBody, transaction, paymentPayload } = req.body;
   if (!responseBody) { res.status(400).json({ error: "responseBody is required" }); return; }
 
   const scheme = paymentPayload?.accepted?.scheme ?? "commerce";
-  const network = paymentPayload?.accepted?.network ?? `eip155:${CHAIN_ID}`;
-  console.log(`[verify] tx=${transaction ?? "unknown"} scheme=${scheme}`);
+  const network = paymentPayload?.accepted?.network ?? `eip155:${CHAIN_IDS[0]}`;
+  const chainId = parseChainId(network);
+  console.log(`[verify] tx=${transaction ?? "unknown"} scheme=${scheme} chain=${chainId}`);
   try {
     const opAddr = operatorAddress;
     if (!opAddr) throw new Error("No operator address — run setup or set OPERATOR_ADDRESS");
+    if (!escrowPeriodAddress) throw new Error("No escrowPeriodAddress — run setup or set ESCROW_PERIOD_ADDRESS");
 
-    if (!escrowPeriodAddress) throw new Error("No escrowPeriodAddress — run setup or check context.json");
-
-    const sdk = createX402r(x402rConfig({ operatorAddress: opAddr, escrowPeriodAddress }, clients))
+    const sdk = createX402r(x402rConfig({ operatorAddress: opAddr, escrowPeriodAddress }, clients, chainId))
       .extend(garbageDetectorActions(gdConfig));
 
     const gv = await sdk.garbageDetector.evaluate(responseBody);
@@ -126,7 +133,7 @@ app.post("/attest/identity", (_req, res) => {
     arbiter: clients.account.address,
     provider: provider.name,
     operator: operatorAddress ?? null,
-    chainId: CHAIN_ID,
+    chains: CHAIN_IDS,
   });
 });
 
@@ -134,7 +141,7 @@ app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
     arbiter: clients.account.address,
-    chainId: CHAIN_ID,
+    chains: CHAIN_IDS,
     operator: operatorAddress ?? null,
     provider: provider.name,
     seed: INFERENCE_SEED,
@@ -145,15 +152,18 @@ app.get("/health", (_req, res) => {
 app.listen(PORT, async () => {
   console.log(`[arbiter] Garbage detector on :${PORT}`);
   console.log(`[arbiter] Address: ${clients.account.address}`);
+  console.log(`[arbiter] Chains: ${CHAIN_IDS.join(", ")}`);
   console.log(`[arbiter] Provider: ${provider.name}, Seed: ${INFERENCE_SEED}`);
   if (operatorAddress) console.log(`[arbiter] Operator: ${operatorAddress}`);
 
-  // Check balances — arbiter needs ETH (gas for release tx) and USDC (clawrouter inference)
+  // Check balances on default chain — arbiter needs ETH (gas) and USDC (clawrouter)
   try {
+    const usdc = getUsdcAddress(CHAIN_IDS[0]);
+    const cc = getChainClients(clients, CHAIN_IDS[0]);
     const [ethBalance, usdcBalance] = await Promise.all([
-      clients.publicClient.getBalance({ address: clients.account.address }),
-      clients.publicClient.readContract({
-        address: USDC, abi: erc20Abi, functionName: "balanceOf",
+      cc.publicClient.getBalance({ address: clients.account.address }),
+      cc.publicClient.readContract({
+        address: usdc, abi: erc20Abi, functionName: "balanceOf",
         args: [clients.account.address],
       }),
     ]);

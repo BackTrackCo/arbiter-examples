@@ -27,6 +27,8 @@ export class ClawRouterProvider implements InferenceProvider {
 
     const signer = toClientEvmSigner(account);
     const client = new x402Client();
+    // ClawRouter accepts x402 payments on Base mainnet (8453), regardless
+    // of which chain the arbiter's escrow operates on.
     client.register("eip155:8453", new ExactEvmScheme(signer));
     this.paidFetch = wrapFetchWithPayment(fetch, client);
   }

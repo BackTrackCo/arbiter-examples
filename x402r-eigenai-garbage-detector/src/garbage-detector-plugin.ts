@@ -18,7 +18,7 @@ export interface GarbageDetectorConfig {
 
 export interface GarbageDetectorActions {
   garbageDetector: {
-    /** Evaluate response body via EigenAI. Returns PASS or FAIL with commitment. */
+    /** Evaluate response body via configured inference provider. Returns PASS or FAIL with commitment. */
     evaluate(responseBody: string): Promise<GarbageVerdict>;
     /** Release escrowed funds (arbiter calls this when verdict is PASS). */
     release(paymentInfo: PaymentInfo, amount?: bigint): Promise<Hash>;
