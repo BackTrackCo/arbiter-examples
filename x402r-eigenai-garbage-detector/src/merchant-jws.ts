@@ -14,8 +14,7 @@ import {
   createAttestationExtension,
   declareAttestationExtension,
 } from "@x402r/evm/extensions/attestation";
-import { getChainConfig } from "@x402r/sdk";
-import { forwardToArbiter } from "@x402r/helpers";
+import { authCaptureEscrow, forwardToArbiter } from "@x402r/helpers";
 import { CHAIN_ID } from "./config.js";
 import { loadContext } from "./scripts/shared.js";
 
@@ -37,8 +36,6 @@ const ARBITER_URL = process.env.ARBITER_URL ?? "http://localhost:3001";
 const networkId = `eip155:${CHAIN_ID}` as const;
 
 const ctx = loadContext();
-const { authCaptureEscrow } = getChainConfig(CHAIN_ID);
-
 // JWS with ES256 — no wallet needed
 const ecKey = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
 const jwsSigner: JWSSigner = {
