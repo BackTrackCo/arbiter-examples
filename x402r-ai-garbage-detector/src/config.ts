@@ -5,7 +5,6 @@ import * as viemChains from "viem/chains";
 import { getChainConfig } from "@x402r/sdk";
 import type { InferenceProvider } from "./providers/types.js";
 import { OpenAICompatibleProvider } from "./providers/openai.js";
-import { OllamaProvider } from "./providers/ollama.js";
 import { ClawRouterProvider } from "./providers/clawrouter.js";
 import { EigenAIProvider } from "./providers/eigenai.js";
 
@@ -40,7 +39,7 @@ export function getUsdcAddress(chainId: number): Address {
 // Inference provider
 // ---------------------------------------------------------------------------
 
-export type ProviderType = "openai" | "ollama" | "clawrouter" | "eigenai";
+export type ProviderType = "clawrouter" | "openai" | "ollama" | "eigenai";
 
 export const INFERENCE_SEED = Number(process.env.INFERENCE_SEED ?? 42);
 
@@ -53,7 +52,8 @@ export const INFERENCE_SEED = Number(process.env.INFERENCE_SEED ?? 42);
  *              CLAWROUTER_MODEL (default openai/gpt-4o-mini), CLAWROUTER_BASE_URL
  * openai:      Any OpenAI-compatible API (OpenAI, OpenRouter, Together, vLLM, etc.)
  *              OPENAI_API_KEY, OPENAI_MODEL (default gpt-4o-mini), OPENAI_BASE_URL
- * ollama:      OLLAMA_MODEL (default llama3.1:8b), OLLAMA_BASE_URL (default localhost:11434)
+ * ollama:      Uses OpenAI-compatible endpoint at localhost:11434/v1 — no API key needed
+ *              OLLAMA_MODEL (default llama3.1:8b), OLLAMA_BASE_URL
  * eigenai:     EIGENAI_GRANT_SERVER, EIGENAI_MODEL — requires wallet account for grant auth
  */
 export function createProvider(account?: LocalAccount): InferenceProvider {
@@ -71,9 +71,10 @@ export function createProvider(account?: LocalAccount): InferenceProvider {
     }
 
     case "ollama":
-      return new OllamaProvider({
-        model: process.env.OLLAMA_MODEL,
-        baseUrl: process.env.OLLAMA_BASE_URL,
+      return new OpenAICompatibleProvider({
+        apiKey: "ollama",
+        model: process.env.OLLAMA_MODEL ?? "llama3.1:8b",
+        baseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434/v1",
       });
 
     case "clawrouter": {
