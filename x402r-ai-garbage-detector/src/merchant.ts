@@ -12,7 +12,7 @@ import {
   createAttestationExtension,
   declareAttestationExtension,
 } from "@x402r/evm/extensions/attestation";
-import { authCaptureEscrow, forwardToArbiter } from "@x402r/helpers";
+import { authCaptureEscrow, tokenCollector, forwardToArbiter } from "@x402r/helpers";
 import { CHAIN_ID } from "./config.js";
 import { createClients, loadContext } from "./scripts/shared.js";
 
@@ -55,6 +55,7 @@ app.use(paymentMiddleware({
       extra: {
         escrowAddress: authCaptureEscrow,
         operatorAddress: ctx.operatorAddress,
+        tokenCollector, // must match escrowAddress — paired set
         feeReceiver: ctx.operatorAddress,
         maxFeeBps: 500,
       },
@@ -71,6 +72,7 @@ app.use(paymentMiddleware({
       extra: {
         escrowAddress: authCaptureEscrow,
         operatorAddress: ctx.operatorAddress,
+        tokenCollector, // must match escrowAddress — paired set
         feeReceiver: ctx.operatorAddress,
         maxFeeBps: 500,
       },
