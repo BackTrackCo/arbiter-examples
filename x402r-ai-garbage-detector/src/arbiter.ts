@@ -115,6 +115,7 @@ app.post("/verify", async (req, res) => {
     if (scheme === "commerce" && rawPaymentInfo) {
       const pi = {
         ...rawPaymentInfo,
+        payer: paymentPayload.payload.authorization?.from ?? rawPaymentInfo.payer,
         maxAmount: BigInt(rawPaymentInfo.maxAmount),
         salt: BigInt(rawPaymentInfo.salt),
       };

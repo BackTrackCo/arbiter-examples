@@ -21,7 +21,7 @@ async function main() {
       chainId: CHAIN_ID,
       arbiter: account.address,
       feeRecipient: account.address,
-      escrowPeriodSeconds: 86400n,
+      escrowPeriodSeconds: 120n, // 2 min — LLM evaluation is fast
     },
   );
 
