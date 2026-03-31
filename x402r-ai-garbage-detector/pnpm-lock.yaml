@@ -27,8 +27,8 @@ importers:
         specifier: link:../../x402r-sdk/packages/core
         version: link:../../x402r-sdk/packages/core
       '@x402r/evm':
-        specifier: ^0.0.2
-        version: 0.0.2(@x402/core@2.8.0)(@x402/evm@2.8.0(typescript@5.9.3))(viem@2.47.1(typescript@5.9.3)(zod@3.25.76))
+        specifier: link:../../x402r-scheme/packages/evm
+        version: link:../../x402r-scheme/packages/evm
       '@x402r/helpers':
         specifier: link:../../x402r-sdk/packages/helpers
         version: link:../../x402r-sdk/packages/helpers
@@ -328,13 +328,6 @@ packages:
 
   '@x402/fetch@2.8.0':
     resolution: {integrity: sha512-GEY6DS5iy/PxwfbdfIBY0RsxrHnHylKmXMqzL8BJdSaerm3w5XhTkNCOG6JyaIt1CpQccYXbzlOEpqFJQNaNAA==}
-
-  '@x402r/evm@0.0.2':
-    resolution: {integrity: sha512-AGY8VNu/gQjiO67QmY5ZRaWyqxM2KDKQQJVbsxfm6RO5KNJkbRANjE51DfQG4P2qXNzY8PjQ+jv27+pylYh/HA==}
-    peerDependencies:
-      '@x402/core': ^2.0.0
-      '@x402/evm': ^2.0.0
-      viem: ^2.0.0
 
   abitype@1.2.3:
     resolution: {integrity: sha512-Ofer5QUnuUdTFsBRwARMoWKOH1ND5ehwYhJ3OJ/BQO+StkwQjHw0XyVh4vDttzHB7QOFhPHa/o413PJ82gU/Tg==}
@@ -989,12 +982,6 @@ snapshots:
       - bufferutil
       - typescript
       - utf-8-validate
-
-  '@x402r/evm@0.0.2(@x402/core@2.8.0)(@x402/evm@2.8.0(typescript@5.9.3))(viem@2.47.1(typescript@5.9.3)(zod@3.25.76))':
-    dependencies:
-      '@x402/core': 2.8.0
-      '@x402/evm': 2.8.0(typescript@5.9.3)
-      viem: 2.47.1(typescript@5.9.3)(zod@3.25.76)
 
   abitype@1.2.3(typescript@5.9.3)(zod@3.25.76):
     optionalDependencies:
