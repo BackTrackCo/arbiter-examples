@@ -56,6 +56,13 @@ app.use(express.json({ limit: "1mb" }));
  * Schedule a refundInEscrow call after the escrow period expires.
  * The arbiter acts as a keeper — on FAIL, it waits for the escrow window
  * then refunds the payer automatically.
+ *
+ * TODO: For independent keepers, a PaymentIndexRecorder is needed so they
+ * can discover payments on-chain. The delivery protection operator preset
+ * doesn't deploy one yet. Without it, anyone can still call refundInEscrow
+ * but they need to track paymentInfo manually (client saves it from the
+ * payment flow, merchant has it from the settlement). The arbiter is the
+ * most convenient caller since it sees paymentInfo via forwardToArbiter.
  */
 function scheduleRefund(sdk: any, paymentInfo: any, transaction: string) {
   sdk.escrow.getDuration().then((duration: bigint) => {
