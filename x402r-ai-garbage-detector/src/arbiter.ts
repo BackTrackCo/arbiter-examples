@@ -52,6 +52,28 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
+/**
+ * Schedule a refundInEscrow call after the escrow period expires.
+ * The arbiter acts as a keeper — on FAIL, it waits for the escrow window
+ * then refunds the payer automatically.
+ */
+function scheduleRefund(sdk: any, paymentInfo: any, transaction: string) {
+  sdk.escrow.getDuration().then((duration: bigint) => {
+    const delayMs = (Number(duration) + 10) * 1000; // +10s buffer
+    console.log(`[verify] FAIL — scheduling refund in ${Number(duration)}s for tx=${transaction ?? "unknown"}`);
+    setTimeout(async () => {
+      try {
+        const hash = await sdk.payment.refundInEscrow(paymentInfo, paymentInfo.maxAmount);
+        console.log(`[refund] tx=${transaction} refunded: ${hash}`);
+      } catch (err) {
+        console.error(`[refund] tx=${transaction} failed:`, err);
+      }
+    }, delayMs);
+  }).catch((err: any) => {
+    console.error("[verify] Could not read escrow period:", err);
+  });
+}
+
 /** Parse chain ID from eip155 network string (e.g. "eip155:84532" → 84532). */
 function parseChainId(network: string): number {
   const match = network.match(/^eip155:(\d+)$/);
@@ -83,17 +105,23 @@ app.post("/verify", async (req, res) => {
     };
 
     const rawPaymentInfo = paymentPayload?.payload?.paymentInfo;
-    if (scheme === "commerce" && gv.verdict === "PASS" && rawPaymentInfo) {
-      try {
-        const pi = {
-          ...rawPaymentInfo,
-          maxAmount: BigInt(rawPaymentInfo.maxAmount),
-          salt: BigInt(rawPaymentInfo.salt),
-        };
-        stored.releaseHash = await sdk.garbageDetector.release(pi);
-        console.log(`[verify] Released: ${stored.releaseHash}`);
-      } catch (err) {
-        console.error("[verify] Release failed:", err);
+    if (scheme === "commerce" && rawPaymentInfo) {
+      const pi = {
+        ...rawPaymentInfo,
+        maxAmount: BigInt(rawPaymentInfo.maxAmount),
+        salt: BigInt(rawPaymentInfo.salt),
+      };
+
+      if (gv.verdict === "PASS") {
+        try {
+          stored.releaseHash = await sdk.garbageDetector.release(pi);
+          console.log(`[verify] Released: ${stored.releaseHash}`);
+        } catch (err) {
+          console.error("[verify] Release failed:", err);
+        }
+      } else {
+        // FAIL: schedule refund after escrow period expires
+        scheduleRefund(sdk, pi, transaction);
       }
     }
 
