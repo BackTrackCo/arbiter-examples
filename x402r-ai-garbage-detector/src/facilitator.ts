@@ -2,11 +2,11 @@ import { x402Facilitator } from "@x402/core/facilitator";
 import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 import { toFacilitatorEvmSigner } from "@x402/evm";
 import { registerCommerceEvmScheme } from "@x402r/evm/commerce/facilitator";
+import { authCaptureEscrow, tokenCollector } from "@x402r/helpers";
 import express from "express";
 import { createWalletClient, http, publicActions } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { CHAIN_ID } from "./config.js";
-import { getViemChain } from "./config.js";
+import { CHAIN_ID, getViemChain } from "./config.js";
 
 // ---------------------------------------------------------------------------
 // Local facilitator for testing — registers the x402r commerce scheme.
@@ -59,6 +59,10 @@ const facilitator = new x402Facilitator();
 registerCommerceEvmScheme(facilitator, {
   signer: evmSigner,
   networks: `eip155:${CHAIN_ID}`,
+  defaults: {
+    escrowAddress: authCaptureEscrow,
+    tokenCollector,
+  },
 });
 
 const app = express();
