@@ -124,8 +124,8 @@ app.post("/verify", async (req, res) => {
         try {
           stored.releaseHash = await sdk.garbageDetector.release(pi);
           console.log(`[verify] Released: ${stored.releaseHash}`);
-        } catch (err) {
-          console.error("[verify] Release failed:", err);
+        } catch (err: any) {
+          console.error("[verify] Release failed:", err.shortMessage ?? err.message ?? err);
         }
       } else {
         // FAIL: schedule refund after escrow period expires
