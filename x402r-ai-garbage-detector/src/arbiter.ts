@@ -53,32 +53,22 @@ app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
 /**
- * Schedule a refundInEscrow call after the escrow period expires.
- * The arbiter acts as a keeper — on FAIL, it waits for the escrow window
- * then refunds the payer automatically.
+ * Refund the payer immediately on FAIL verdict.
  *
- * TODO: For independent keepers, a PaymentIndexRecorder is needed so they
- * can discover payments on-chain. The delivery protection operator preset
- * doesn't deploy one yet. Without it, anyone can still call refundInEscrow
- * but they need to track paymentInfo manually (client saves it from the
- * payment flow, merchant has it from the settlement). The arbiter is the
- * most convenient caller since it sees paymentInfo via forwardToArbiter.
+ * The delivery protection v2 operator includes SAC(arbiter) in the
+ * refundInEscrowCondition OrCondition, so the arbiter can refund without
+ * waiting for the escrow period to expire. Independent keepers can also
+ * discover payments via the PaymentIndexRecorder and trigger refunds
+ * after the escrow window.
  */
-function scheduleRefund(sdk: any, paymentInfo: any, transaction: string) {
-  sdk.escrow.getDuration().then((duration: bigint) => {
-    const delayMs = (Number(duration) + 10) * 1000; // +10s buffer
-    console.log(`[verify] FAIL — scheduling refund in ${Number(duration)}s for tx=${transaction ?? "unknown"}`);
-    setTimeout(async () => {
-      try {
-        const hash = await sdk.payment.refundInEscrow(paymentInfo, paymentInfo.maxAmount);
-        console.log(`[refund] tx=${transaction} refunded: ${hash}`);
-      } catch (err) {
-        console.error(`[refund] tx=${transaction} failed:`, err);
-      }
-    }, delayMs);
-  }).catch((err: any) => {
-    console.error("[verify] Could not read escrow period:", err);
-  });
+async function refundPayer(sdk: any, paymentInfo: any, transaction: string) {
+  console.log(`[verify] FAIL — refunding immediately for tx=${transaction ?? "unknown"}`);
+  try {
+    const hash = await sdk.payment.refundInEscrow(paymentInfo, paymentInfo.maxAmount);
+    console.log(`[refund] tx=${transaction} refunded: ${hash}`);
+  } catch (err) {
+    console.error(`[refund] tx=${transaction} failed:`, err);
+  }
 }
 
 /** Parse chain ID from eip155 network string (e.g. "eip155:84532" → 84532). */
@@ -128,8 +118,8 @@ app.post("/verify", async (req, res) => {
           console.error("[verify] Release failed:", err.shortMessage ?? err.message ?? err);
         }
       } else {
-        // FAIL: schedule refund after escrow period expires
-        scheduleRefund(sdk, pi, transaction);
+        // FAIL: arbiter can refund immediately (SAC(arbiter) in refundInEscrow OrCondition)
+        refundPayer(sdk, pi, transaction);
       }
     }
 

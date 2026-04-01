@@ -83,6 +83,9 @@ interface SavedContext {
   operatorAddress: Address;
   escrowPeriodAddress: Address;
   arbiterConditionAddress: Address;
+  releaseConditionAddress: Address;
+  refundInEscrowConditionAddress: Address;
+  authorizeRecorderAddress: Address;
   paymentInfo?: PaymentInfo;
 }
 
@@ -131,6 +134,9 @@ export function loadContext(): SavedContext {
     operatorAddress: raw.operatorAddress,
     escrowPeriodAddress: raw.escrowPeriodAddress,
     arbiterConditionAddress: raw.arbiterConditionAddress,
+    releaseConditionAddress: raw.releaseConditionAddress,
+    refundInEscrowConditionAddress: raw.refundInEscrowConditionAddress,
+    authorizeRecorderAddress: raw.authorizeRecorderAddress,
     paymentInfo,
   };
 }

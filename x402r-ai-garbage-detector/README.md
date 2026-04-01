@@ -15,7 +15,7 @@ pnpm run client             # make paid requests and check verdicts (separate te
 
 Three systems work together: x402r (payment escrow), AI inference (content evaluation), and x402 middleware (HTTP payment flow).
 
-**x402r (on-chain)** -- USDC payment flows into `AuthCaptureEscrow`, managed by `PaymentOperator`. `StaticAddressCondition(arbiter)` gates release -- only the arbiter can release escrowed funds. `EscrowPeriod` gates refund -- if arbiter does nothing, funds auto-refund after the escrow window.
+**x402r (on-chain)** -- USDC payment flows into `AuthCaptureEscrow`, managed by `PaymentOperator`. Release requires arbiter OR payer (`OrCondition([SAC(arbiter), PayerCondition])`). Refund-in-escrow can be triggered by arbiter immediately, by receiver (voluntary refund), or by anyone after the escrow window (`OrCondition([EscrowPeriod, ReceiverCondition, SAC(arbiter)])`). A `PaymentIndexRecorder` indexes payments on-chain so independent keepers can discover and trigger refunds.
 
 **AI Inference (off-chain)** -- The arbiter evaluates HTTP response bodies against a garbage detection prompt. A keccak256 commitment hash (prompt + response + seed) makes every evaluation auditable. Three provider options:
 
@@ -177,5 +177,8 @@ const sdk = createX402r({ ... }).extend(
 | Contract | Role |
 |----------|------|
 | PaymentOperator | Authorize, release, refund payments |
-| EscrowPeriod | Time-lock condition on funds |
-| StaticAddressCondition | Gates release to arbiter address only |
+| EscrowPeriod | Time-lock condition + authorize recorder |
+| StaticAddressCondition | Identifies arbiter address |
+| OrCondition (release) | Arbiter OR payer can release |
+| OrCondition (refund) | EscrowPeriod OR receiver OR arbiter can refund |
+| RecorderCombinator | Combines EscrowPeriod + PaymentIndexRecorder |

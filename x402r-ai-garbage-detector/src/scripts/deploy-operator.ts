@@ -25,15 +25,22 @@ async function main() {
     },
   );
 
-  console.log(`  Operator:         ${deployment.operatorAddress}`);
-  console.log(`  EscrowPeriod:     ${deployment.escrowPeriodAddress}`);
-  console.log(`  ArbiterCondition: ${deployment.arbiterConditionAddress}`);
+  console.log(`  Operator:              ${deployment.operatorAddress}`);
+  console.log(`  EscrowPeriod:          ${deployment.escrowPeriodAddress}`);
+  console.log(`  ArbiterCondition:      ${deployment.arbiterConditionAddress}`);
+  console.log(`  ReleaseCondition:      ${deployment.releaseConditionAddress}`);
+  console.log(`  RefundInEscrow:        ${deployment.refundInEscrowConditionAddress}`);
+  console.log(`  AuthorizeRecorder:     ${deployment.authorizeRecorderAddress}`);
+  console.log(`  PaymentIndexRecorder:  ${deployment.paymentIndexRecorderAddress}`);
   console.log(`  New: ${deployment.summary.newCount}, existing: ${deployment.summary.existingCount}`);
 
   const context = {
     operatorAddress: deployment.operatorAddress,
     escrowPeriodAddress: deployment.escrowPeriodAddress,
     arbiterConditionAddress: deployment.arbiterConditionAddress,
+    releaseConditionAddress: deployment.releaseConditionAddress,
+    refundInEscrowConditionAddress: deployment.refundInEscrowConditionAddress,
+    authorizeRecorderAddress: deployment.authorizeRecorderAddress,
   };
   writeFileSync(CONTEXT_FILE, JSON.stringify(context, null, 2));
   console.log(`\nSaved to ${CONTEXT_FILE}`);
