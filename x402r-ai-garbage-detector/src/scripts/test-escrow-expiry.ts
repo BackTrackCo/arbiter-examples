@@ -4,7 +4,7 @@ import { CommerceEvmScheme } from "@x402r/evm/commerce/client";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { wrapFetchWithPayment } from "@x402/fetch";
 import { formatUnits } from "viem";
-import { CHAIN_ID } from "../config.js";
+import { CHAIN_ID, getViemChain } from "../config.js";
 import { createClients, loadContext, x402rConfig } from "./shared.js";
 
 // ---------------------------------------------------------------------------
@@ -31,8 +31,8 @@ async function main() {
 
   // Resolve PaymentIndexRecorder address
   const { createPublicClient, http } = await import("viem");
-  const { baseSepolia } = await import("viem/chains");
-  const publicClient = createPublicClient({ chain: baseSepolia, transport: http() });
+  const chain = getViemChain(CHAIN_ID);
+  const publicClient = createPublicClient({ chain, transport: http() });
 
   const recorderAddress = ctx.authorizeRecorderAddress;
   const pirAddress = await publicClient.readContract({
@@ -176,8 +176,7 @@ async function main() {
 
     // Wait for receipt
     const { createPublicClient: createPC2, http: http2 } = await import("viem");
-    const { baseSepolia: bs2 } = await import("viem/chains");
-    const pc2 = createPC2({ chain: bs2, transport: http2() });
+    const pc2 = createPC2({ chain: getViemChain(CHAIN_ID), transport: http2() });
     const receipt = await pc2.waitForTransactionReceipt({ hash: refundHash });
     console.log(`Receipt: status=${receipt.status}, block=${receipt.blockNumber}`);
     // Wait for RPC to index the new block

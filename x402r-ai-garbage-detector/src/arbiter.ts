@@ -60,6 +60,7 @@ interface StoredVerdict {
 // ---------------------------------------------------------------------------
 
 const VERDICTS_DIR = process.env.VERDICTS_DIR ?? "verdicts";
+const MAX_CACHE = 1_000;
 const verdictCache = new Map<string, StoredVerdict>();
 
 function ensureVerdictDir() {
@@ -70,6 +71,10 @@ function saveVerdict(tx: string, verdict: StoredVerdict) {
   ensureVerdictDir();
   const safe = tx.replace(/[^a-zA-Z0-9x]/g, "");
   writeFileSync(join(VERDICTS_DIR, `${safe}.json`), JSON.stringify(verdict));
+  if (verdictCache.size >= MAX_CACHE) {
+    const oldest = verdictCache.keys().next().value;
+    if (oldest) verdictCache.delete(oldest);
+  }
   verdictCache.set(tx, verdict);
 }
 
@@ -82,7 +87,10 @@ function loadVerdict(tx: string): StoredVerdict | undefined {
     const v = JSON.parse(readFileSync(path, "utf-8")) as StoredVerdict;
     verdictCache.set(tx, v);
     return v;
-  } catch { return undefined; }
+  } catch (err) {
+    console.warn(`[verdict] Failed to load ${path}:`, err);
+    return undefined;
+  }
 }
 
 function getVerdictCount(): number {
