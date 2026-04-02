@@ -45,9 +45,12 @@ interface StoredVerdict {
   network: string;
   arbiter: Address;
   releaseHash?: Hex;
+  refundHash?: Hex;
+  refundError?: string;
   timestamp: number;
 }
 
+const MAX_VERDICTS = 10_000;
 const verdictStore = new Map<string, StoredVerdict>();
 
 const app = express();
@@ -63,20 +66,32 @@ app.use(express.json({ limit: "1mb" }));
  * discover payments via the PaymentIndexRecorder and trigger refunds
  * after the escrow window.
  */
-async function refundPayer(sdk: any, paymentInfo: any, transaction: string) {
+async function refundPayer(sdk: any, paymentInfo: any, transaction: string): Promise<{ hash?: Hex; error?: string }> {
   console.log(`[verify] FAIL — refunding immediately for tx=${transaction ?? "unknown"}`);
   try {
     const hash = await sdk.payment.refundInEscrow(paymentInfo, paymentInfo.maxAmount);
     console.log(`[refund] tx=${transaction} refunded: ${hash}`);
-  } catch (err) {
-    console.error(`[refund] tx=${transaction} failed:`, err);
+    return { hash };
+  } catch (err: any) {
+    const msg = err.shortMessage ?? err.message ?? String(err);
+    console.error(`[refund] tx=${transaction} failed:`, msg);
+    return { error: msg };
   }
 }
 
-/** Parse chain ID from eip155 network string (e.g. "eip155:84532" → 84532). */
+/** Parse chain ID from eip155 network string (e.g. "eip155:84532" -> 84532). */
 function parseChainId(network: string): number {
   const match = network.match(/^eip155:(\d+)$/);
-  return match ? Number(match[1]) : CHAIN_IDS[0];
+  if (!match) {
+    console.warn(`[verify] Malformed network "${network}", falling back to chain ${CHAIN_IDS[0]}`);
+    return CHAIN_IDS[0];
+  }
+  const chainId = Number(match[1]);
+  if (!CHAIN_IDS.includes(chainId)) {
+    console.warn(`[verify] Chain ${chainId} not in CHAIN_IDS [${CHAIN_IDS}], falling back to ${CHAIN_IDS[0]}`);
+    return CHAIN_IDS[0];
+  }
+  return chainId;
 }
 
 // POST /verify — evaluate content, release on PASS (called by @x402r/helpers forwardToArbiter)
@@ -123,10 +138,17 @@ app.post("/verify", async (req, res) => {
         }
       } else {
         // FAIL: arbiter can refund immediately (SAC(arbiter) in refundInEscrow OrCondition)
-        refundPayer(sdk, pi, transaction);
+        const result = await refundPayer(sdk, pi, transaction);
+        stored.refundHash = result.hash;
+        stored.refundError = result.error;
       }
     }
 
+    // Evict oldest verdict if store is full
+    if (verdictStore.size >= MAX_VERDICTS) {
+      const oldest = verdictStore.keys().next().value;
+      if (oldest) verdictStore.delete(oldest);
+    }
     verdictStore.set(transaction, stored);
     res.json({
       verdict: gv.verdict,
@@ -150,6 +172,8 @@ app.get("/verdict/:transaction", (req, res) => {
     responseBodyHash: stored.responseBodyHash,
     arbiter: stored.arbiter,
     releaseHash: stored.releaseHash ?? null,
+    refundHash: stored.refundHash ?? null,
+    refundError: stored.refundError ?? null,
     timestamp: stored.timestamp,
   });
 });

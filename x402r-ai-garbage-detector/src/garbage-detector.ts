@@ -71,7 +71,8 @@ function parseDecision(raw: string): { verdict: VerdictResult; reason: string } 
     }
   }
   // Fail-open: unparseable inference response defaults to PASS (protects merchants
-  // from arbiter/provider issues — escrowed funds are released rather than frozen).
+  // from arbiter/provider issues: escrowed funds are released rather than frozen).
+  console.warn(`[garbage-detector] WARN: could not parse inference response, defaulting to PASS. Raw: ${raw.slice(0, 200)}`);
   return { verdict: "PASS", reason: "Could not parse inference response; defaulting to PASS" };
 }
 
