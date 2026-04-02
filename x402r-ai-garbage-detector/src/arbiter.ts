@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { type Address, type Hex, erc20Abi, formatUnits } from "viem";
+import { type Address, type Hex, erc20Abi, formatUnits, keccak256, toBytes } from "viem";
 import { createX402r } from "@x402r/sdk";
 import { type GarbageVerdict } from "./garbage-detector.js";
 import { garbageDetectorActions } from "./garbage-detector-plugin.js";
@@ -39,6 +39,8 @@ try {
 
 interface StoredVerdict {
   verdict: GarbageVerdict;
+  responseBody: string;
+  responseBodyHash: Hex;
   transaction: string;
   network: string;
   arbiter: Address;
@@ -97,8 +99,10 @@ app.post("/verify", async (req, res) => {
     const gv = await sdk.garbageDetector.evaluate(responseBody);
     console.log(`[verify] ${gv.verdict} — ${gv.reason}`);
 
+    const bodyStr = typeof responseBody === "string" ? responseBody : JSON.stringify(responseBody);
     const stored: StoredVerdict = {
-      verdict: gv, transaction, network, arbiter: clients.account.address, timestamp: Date.now(),
+      verdict: gv, responseBody: bodyStr, responseBodyHash: keccak256(toBytes(bodyStr)),
+      transaction, network, arbiter: clients.account.address, timestamp: Date.now(),
     };
 
     const rawPaymentInfo = paymentPayload?.payload?.paymentInfo;
@@ -143,9 +147,22 @@ app.get("/verdict/:transaction", (req, res) => {
     verdict: stored.verdict.verdict,
     reason: stored.verdict.reason,
     commitment: stored.verdict.commitment,
+    responseBodyHash: stored.responseBodyHash,
     arbiter: stored.arbiter,
     releaseHash: stored.releaseHash ?? null,
     timestamp: stored.timestamp,
+  });
+});
+
+// GET /verdict/:tx/payload — returns the response body the arbiter evaluated
+// Clients use this to verify the merchant forwarded the same content they received.
+// Compare: keccak256(this payload) should match verdict.commitment.responseHash
+app.get("/verdict/:transaction/payload", (req, res) => {
+  const stored = verdictStore.get(req.params.transaction);
+  if (!stored) { res.status(404).json({ error: "Not found" }); return; }
+  res.json({
+    responseBody: stored.responseBody,
+    responseHash: stored.verdict.commitment.responseHash,
   });
 });
 

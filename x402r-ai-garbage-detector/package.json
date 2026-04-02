@@ -7,7 +7,6 @@
     "setup": "tsx --env-file=.env.arbiter src/scripts/deploy-operator.ts",
     "arbiter": "tsx --env-file=.env.arbiter src/arbiter.ts",
     "merchant": "tsx --env-file=.env.merchant src/merchant.ts",
-    "merchant:jws": "tsx --env-file=.env.merchant.jws src/merchant-jws.ts",
     "facilitator": "tsx --env-file=.env.arbiter src/facilitator.ts",
     "client": "tsx --env-file=.env.client src/client.ts",
     "typecheck": "tsc --noEmit"
@@ -16,7 +15,7 @@
     "@x402/core": "^2.3.0",
     "@x402/evm": "^2.3.0",
     "@x402/express": "^2.3.0",
-    "@x402/extensions": "^2.3.0",
+
     "@x402/fetch": "^2.7.0",
     "@x402r/core": "link:../../x402r-sdk/packages/core",
     "@x402r/evm": "link:../../x402r-scheme/packages/evm",

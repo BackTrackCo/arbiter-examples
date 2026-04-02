@@ -4,11 +4,6 @@ import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { CommerceServerScheme } from "@x402r/evm/commerce/server";
 import {
-  createEIP712OfferReceiptIssuer,
-  createOfferReceiptExtension,
-  declareOfferReceiptExtension,
-} from "@x402/extensions/offer-receipt";
-import {
   createAttestationExtension,
   declareAttestationExtension,
 } from "@x402r/evm/extensions/attestation";
@@ -30,15 +25,10 @@ const ARBITER_URL = process.env.ARBITER_URL ?? "http://localhost:3001";
 const networkId = `eip155:${CHAIN_ID}` as const;
 
 const ctx = loadContext();
-const issuer = createEIP712OfferReceiptIssuer(
-  `did:pkh:eip155:${CHAIN_ID}:${account.address}`,
-  (params) => account.signTypedData(params),
-);
 
 const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
 const resourceServer = new x402ResourceServer(facilitatorClient)
   .register(networkId, new CommerceServerScheme())
-  .registerExtension(createOfferReceiptExtension(issuer))
   .registerExtension(createAttestationExtension(ARBITER_URL))
   .onAfterSettle(forwardToArbiter(ARBITER_URL));
 
@@ -60,7 +50,6 @@ app.use(paymentMiddleware({
         maxFeeBps: 500,
       },
     }],
-    ...declareOfferReceiptExtension({ includeTxHash: true }),
     ...declareAttestationExtension(),
   },
   "GET /garbage": {
@@ -77,7 +66,6 @@ app.use(paymentMiddleware({
         maxFeeBps: 500,
       },
     }],
-    ...declareOfferReceiptExtension({ includeTxHash: true }),
     ...declareAttestationExtension(),
   },
 }, resourceServer));

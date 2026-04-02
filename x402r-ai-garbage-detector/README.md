@@ -31,7 +31,7 @@ Three systems work together: x402r (payment escrow), AI inference (content evalu
 ### Flow
 
 1. **Client** sends a paid request through x402 middleware -- `wrapFetchWithPayment` handles the 402 -> sign -> retry flow
-2. **Merchant** serves the response, x402 settles the escrow payment via facilitator, signs an EIP-712 receipt (delivery proof)
+2. **Merchant** serves the response, x402 settles the escrow payment via facilitator
 3. **Hook** fires `forwardToArbiter()` which POSTs the response body to the arbiter (async, fire-and-forget)
 4. **Arbiter** evaluates the response via the configured provider:
    - **PASS** -- calls `sdk.garbageDetector.release(paymentInfo)` to release escrowed funds to merchant
@@ -160,8 +160,7 @@ const sdk = createX402r({ ... }).extend(
 |--------|---------|
 | `pnpm run setup` | Deploy PaymentOperator + conditions (one-time) |
 | `pnpm run arbiter` | Start garbage detection service (long-running) |
-| `pnpm run merchant` | Merchant with EIP-712 receipts (needs wallet) |
-| `pnpm run merchant:jws` | Merchant with JWS receipts (no wallet needed) |
+| `pnpm run merchant` | Merchant server (needs wallet) |
 | `pnpm run client` | Make paid requests through x402 flow |
 
 ## Limitations
