@@ -17,10 +17,10 @@
     "@x402/express": "^2.3.0",
 
     "@x402/fetch": "^2.7.0",
-    "@x402r/core": "link:../../x402r-sdk/packages/core",
-    "@x402r/evm": "link:../../x402r-scheme/packages/evm",
-    "@x402r/helpers": "link:../../x402r-sdk/packages/helpers",
-    "@x402r/sdk": "link:../../x402r-sdk/packages/sdk",
+    "@x402r/core": "0.2.0",
+    "@x402r/evm": "0.1.0",
+    "@x402r/helpers": "0.2.1",
+    "@x402r/sdk": "0.2.1",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "viem": "2.47.1"
