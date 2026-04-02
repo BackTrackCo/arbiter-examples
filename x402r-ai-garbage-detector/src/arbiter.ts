@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { type Address, type Hex, erc20Abi, formatUnits, keccak256, toBytes } from "viem";
 import { createX402r } from "@x402r/sdk";
 import { type GarbageVerdict } from "./garbage-detector.js";
-import { garbageDetectorActions } from "./garbage-detector-plugin.js";
+import { garbageDetectorActions, type GarbageDetectorActions } from "./garbage-detector-plugin.js";
 import { CHAIN_IDS, INFERENCE_SEED, createProvider, getUsdcAddress } from "./config.js";
 import { createClients, getChainClients, x402rConfig, loadContext } from "./scripts/shared.js";
 
@@ -160,7 +160,7 @@ app.post("/verify", async (req, res) => {
     if (!escrowPeriodAddress) throw new Error("No escrowPeriodAddress — run setup or set ESCROW_PERIOD_ADDRESS");
 
     const sdk = createX402r(x402rConfig({ operatorAddress: opAddr, escrowPeriodAddress }, clients, chainId))
-      .extend(garbageDetectorActions(gdConfig));
+      .extend(garbageDetectorActions(gdConfig) as any) as unknown as ReturnType<typeof createX402r> & GarbageDetectorActions;
 
     const gv = await sdk.garbageDetector.evaluate(responseBody);
     console.log(`[verify] ${gv.verdict} — ${gv.reason}`);
