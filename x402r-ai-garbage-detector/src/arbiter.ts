@@ -43,6 +43,7 @@ interface StoredVerdict {
   verdict: GarbageVerdict;
   responseBody: string;
   responseBodyHash: Hex;
+  payer: Address;
   transaction: string;
   network: string;
   arbiter: Address;
@@ -152,16 +153,17 @@ app.post("/verify", async (req, res) => {
     console.log(`[verify] ${gv.verdict} — ${gv.reason}`);
 
     const bodyStr = typeof responseBody === "string" ? responseBody : JSON.stringify(responseBody);
+    const rawPaymentInfo = paymentPayload?.payload?.paymentInfo;
+    const payer = (paymentPayload?.payload?.authorization?.from ?? rawPaymentInfo?.payer ?? "0x0") as Address;
     const stored: StoredVerdict = {
       verdict: gv, responseBody: bodyStr, responseBodyHash: keccak256(toBytes(bodyStr)),
-      transaction, network, arbiter: clients.account.address, timestamp: Date.now(),
+      payer, transaction, network, arbiter: clients.account.address, timestamp: Date.now(),
     };
 
-    const rawPaymentInfo = paymentPayload?.payload?.paymentInfo;
     if (scheme === "commerce" && rawPaymentInfo) {
       const pi = {
         ...rawPaymentInfo,
-        payer: paymentPayload.payload.authorization?.from ?? rawPaymentInfo.payer,
+        payer,
         maxAmount: BigInt(rawPaymentInfo.maxAmount),
         salt: BigInt(rawPaymentInfo.salt),
       };
@@ -211,14 +213,46 @@ app.get("/verdict/:transaction", (req, res) => {
 });
 
 // GET /verdict/:tx/payload — returns the response body the arbiter evaluated
-// Clients use this to verify the merchant forwarded the same content they received.
-// Compare: keccak256(this payload) should match verdict.commitment.responseHash
-app.get("/verdict/:transaction/payload", (req, res) => {
+// Protected by payer auth: only the wallet that paid can retrieve the payload.
+// This prevents the arbiter from becoming a free CDN for paid content while
+// ensuring the client can always get what they paid for, even if the merchant
+// sent them garbage.
+//
+// Auth: Authorization header = EIP-191 personal_sign of "x402r:payload:{txHash}"
+// The recovered signer must match the payer address from the payment.
+app.get("/verdict/:transaction/payload", async (req, res) => {
   const stored = loadVerdict(req.params.transaction);
   if (!stored) { res.status(404).json({ error: "Not found" }); return; }
+
+  const signature = req.headers.authorization as Hex | undefined;
+  if (!signature) {
+    res.status(401).json({
+      error: "Authorization required",
+      message: 'Sign "x402r:payload:{txHash}" with your wallet and pass as Authorization header',
+    });
+    return;
+  }
+
+  try {
+    const message = `x402r:payload:${req.params.transaction}`;
+    const cc = getChainClients(clients, CHAIN_IDS[0]);
+    const valid = await cc.publicClient.verifyMessage({
+      address: stored.payer,
+      message,
+      signature,
+    });
+    if (!valid) {
+      res.status(403).json({ error: "Signature does not match payer" });
+      return;
+    }
+  } catch {
+    res.status(403).json({ error: "Invalid signature" });
+    return;
+  }
+
   res.json({
     responseBody: stored.responseBody,
-    responseHash: stored.verdict.commitment.responseHash,
+    responseBodyHash: stored.responseBodyHash,
   });
 });
 

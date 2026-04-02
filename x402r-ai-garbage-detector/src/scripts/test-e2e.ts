@@ -143,8 +143,17 @@ async function main() {
       `Payload hash matches (arbiter saw same content)`,
     );
 
-    // Also verify via /payload endpoint
-    const payloadRes = await fetch(`${ARBITER_URL}/verdict/${settleTx1}/payload`);
+    // Test unauthenticated payload request (should be rejected)
+    const unauthRes = await fetch(`${ARBITER_URL}/verdict/${settleTx1}/payload`);
+    assert(unauthRes.status === 401, `Payload endpoint rejects unauthenticated requests`);
+
+    // Test authenticated payload retrieval (payer signs tx hash)
+    const payloadMessage = `x402r:payload:${settleTx1}`;
+    const payloadSig = await account.signMessage({ message: payloadMessage });
+    const payloadRes = await fetch(`${ARBITER_URL}/verdict/${settleTx1}/payload`, {
+      headers: { Authorization: payloadSig },
+    });
+    assert(payloadRes.ok, `Payload endpoint accepts payer signature`);
     const payload1 = await payloadRes.json() as any;
     assert(payload1.responseBody === body1Str, `Full payload matches client response`);
   } else {
