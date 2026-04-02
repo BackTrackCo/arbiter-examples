@@ -82,6 +82,7 @@ COPY --from=ollama-model /root/.ollama /root/.ollama
 COPY entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
+VOLUME /app/verdicts
 EXPOSE 3001
 
 ENTRYPOINT ["./entrypoint.sh"]
