@@ -3,7 +3,7 @@ import { toClientEvmSigner } from "@x402/evm";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { wrapFetchWithPayment } from "@x402/fetch";
 import { x402Client } from "@x402/core/client";
-import type { InferenceProvider, InferenceResult } from "./types.js";
+import { type InferenceProvider, type InferenceResult, type ChatCompletionResponse, extractContent } from "./types.js";
 
 /**
  * ClawRouter provider — pays for inference with USDC via x402.
@@ -58,10 +58,8 @@ export class ClawRouterProvider implements InferenceProvider {
       throw new Error(`ClawRouter request failed (${res.status}): ${errText}`);
     }
 
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const rawResponse = data.choices?.[0]?.message?.content ?? "";
+    const data = (await res.json()) as ChatCompletionResponse;
+    const rawResponse = extractContent(data);
     return { rawResponse, displayContent: rawResponse };
   }
 }

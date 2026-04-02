@@ -35,39 +35,26 @@ const resourceServer = new x402ResourceServer(facilitatorClient)
 const app = express();
 app.use(cors());
 
+const paidRoute = {
+  accepts: [{
+    scheme: "commerce" as const,
+    network: networkId,
+    price: "$0.01",
+    payTo: account.address,
+    extra: {
+      escrowAddress: authCaptureEscrow,
+      operatorAddress: ctx.operatorAddress,
+      tokenCollector,
+      feeReceiver: ctx.operatorAddress,
+      maxFeeBps: 500,
+    },
+  }],
+  ...declareAttestationExtension(),
+};
+
 app.use(paymentMiddleware({
-  "GET /weather": {
-    accepts: [{
-      scheme: "commerce" as const,
-      network: networkId,
-      price: "$0.01",
-      payTo: account.address,
-      extra: {
-        escrowAddress: authCaptureEscrow,
-        operatorAddress: ctx.operatorAddress,
-        tokenCollector, // must match escrowAddress — paired set
-        feeReceiver: ctx.operatorAddress,
-        maxFeeBps: 500,
-      },
-    }],
-    ...declareAttestationExtension(),
-  },
-  "GET /garbage": {
-    accepts: [{
-      scheme: "commerce" as const,
-      network: networkId,
-      price: "$0.01",
-      payTo: account.address,
-      extra: {
-        escrowAddress: authCaptureEscrow,
-        operatorAddress: ctx.operatorAddress,
-        tokenCollector, // must match escrowAddress — paired set
-        feeReceiver: ctx.operatorAddress,
-        maxFeeBps: 500,
-      },
-    }],
-    ...declareAttestationExtension(),
-  },
+  "GET /weather": paidRoute,
+  "GET /garbage": paidRoute,
 }, resourceServer));
 
 app.get("/weather", (_req, res) => {

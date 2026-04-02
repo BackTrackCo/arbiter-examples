@@ -1,5 +1,5 @@
 import type { LocalAccount } from "viem/accounts";
-import type { InferenceProvider, InferenceResult } from "./types.js";
+import { type InferenceProvider, type InferenceResult, type ChatCompletionResponse, extractContent } from "./types.js";
 
 function stripTags(text: string): string {
   let cleaned = text.replace(/^<\|channel\|>.*?<\|message\|>/s, "");
@@ -44,6 +44,7 @@ export class EigenAIProvider implements InferenceProvider {
       body: JSON.stringify({
         model: this.model,
         max_tokens: 1024,
+        temperature: 0,
         seed,
         messages: [
           { role: "system", content: systemPrompt },
@@ -58,10 +59,8 @@ export class EigenAIProvider implements InferenceProvider {
       const errText = await res.text();
       throw new Error(`EigenAI request failed (${res.status}): ${errText}`);
     }
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const rawResponse = data.choices?.[0]?.message?.content ?? "";
+    const data = (await res.json()) as ChatCompletionResponse;
+    const rawResponse = extractContent(data);
     return { rawResponse, displayContent: stripTags(rawResponse) };
   }
 }

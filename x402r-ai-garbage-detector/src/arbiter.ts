@@ -67,10 +67,14 @@ function ensureVerdictDir() {
   if (!existsSync(VERDICTS_DIR)) mkdirSync(VERDICTS_DIR, { recursive: true });
 }
 
+function txToFilename(tx: string): string {
+  if (!/^0x[a-fA-F0-9]{64}$/.test(tx)) throw new Error(`Invalid tx hash: ${tx}`);
+  return `${tx}.json`;
+}
+
 function saveVerdict(tx: string, verdict: StoredVerdict) {
   ensureVerdictDir();
-  const safe = tx.replace(/[^a-zA-Z0-9x]/g, "");
-  writeFileSync(join(VERDICTS_DIR, `${safe}.json`), JSON.stringify(verdict));
+  writeFileSync(join(VERDICTS_DIR, txToFilename(tx)), JSON.stringify(verdict));
   if (verdictCache.size >= MAX_CACHE) {
     const oldest = verdictCache.keys().next().value;
     if (oldest) verdictCache.delete(oldest);
@@ -80,8 +84,9 @@ function saveVerdict(tx: string, verdict: StoredVerdict) {
 
 function loadVerdict(tx: string): StoredVerdict | undefined {
   if (verdictCache.has(tx)) return verdictCache.get(tx);
-  const safe = tx.replace(/[^a-zA-Z0-9x]/g, "");
-  const path = join(VERDICTS_DIR, `${safe}.json`);
+  let filename: string;
+  try { filename = txToFilename(tx); } catch { return undefined; }
+  const path = join(VERDICTS_DIR, filename);
   if (!existsSync(path)) return undefined;
   try {
     const v = JSON.parse(readFileSync(path, "utf-8")) as StoredVerdict;
@@ -199,8 +204,9 @@ app.post("/verify", async (req, res) => {
       releaseHash: stored.releaseHash ?? null,
     });
   } catch (err) {
-    console.error("[verify] Error:", err);
-    res.status(500).json({ error: "Garbage detection failed" });
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[verify] Error:", msg);
+    res.status(500).json({ error: "Garbage detection failed", detail: msg });
   }
 });
 
@@ -315,7 +321,7 @@ app.listen(PORT, async () => {
     if (usdcBalance === 0n && provider.name.startsWith("clawrouter")) {
       console.warn(`[arbiter] ⚠ No USDC — fund ${clients.account.address} to pay for inference`);
     }
-  } catch {
-    // Non-critical — just skip the check
+  } catch (err) {
+    console.warn("[arbiter] Balance check failed (RPC misconfigured?):", err instanceof Error ? err.message : err);
   }
 });

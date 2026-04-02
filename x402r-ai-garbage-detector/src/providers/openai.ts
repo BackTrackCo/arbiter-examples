@@ -1,4 +1,4 @@
-import type { InferenceProvider, InferenceResult } from "./types.js";
+import { type InferenceProvider, type InferenceResult, type ChatCompletionResponse, extractContent } from "./types.js";
 
 /**
  * OpenAI-compatible chat completions provider.
@@ -54,10 +54,8 @@ export class OpenAICompatibleProvider implements InferenceProvider {
       throw new Error(`${this.name} request failed (${res.status}): ${errText}`);
     }
 
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const rawResponse = data.choices?.[0]?.message?.content ?? "";
+    const data = (await res.json()) as ChatCompletionResponse;
+    const rawResponse = extractContent(data);
     return { rawResponse, displayContent: rawResponse };
   }
 }
