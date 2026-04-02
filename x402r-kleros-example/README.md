@@ -4,9 +4,9 @@ Kleros arbitration for x402r refund disputes on Arbitrum Sepolia.
 
 ## Background
 
-x402r adds refunds to x402 payments. Funds are held in escrow after payment. A payer can request a refund; an **arbiter** (a contract with permission to call `RefundRequest.approve()` / `.deny()`) decides the outcome.
+x402r adds refunds to x402 payments. Funds are held in escrow after payment. A payer can request a refund; an **arbiter** (a contract authorized to call `operator.refundInEscrow()` or `RefundRequest.deny()`) decides the outcome.
 
-This example makes `ArbitrableX402r` the arbiter. It forwards disputes to Kleros. Jurors review evidence, vote on a ruling, and the contract executes the result on x402r.
+This example makes `ArbitrableX402r` the arbiter. It forwards disputes to Kleros. Jurors review evidence, vote on a ruling, and the contract executes the result on x402r. RefundRequest tracks dispute state (request/deny/refuse); on PayerWins, the arbiter calls the operator directly and RefundRequest auto-records the approval.
 
 > **Note:** In production x402, `PaymentInfo` comes from a merchant's HTTP 402 response. This example builds it manually in `client.ts`. See the [x402 examples](https://github.com/coinbase/x402/tree/main/examples/typescript) for the full payment flow.
 
@@ -15,7 +15,10 @@ This example makes `ArbitrableX402r` the arbiter. It forwards disputes to Kleros
 ```
 Payer   -> kleros.request()  -> creates refund request + Kleros dispute + evidence
 Jurors  -> KlerosCore.rule() -> ArbitrableX402r.rule() stores the ruling
-Anyone  -> kleros.execute()  -> ArbitrableX402r.executeRuling() -> RefundRequest.approve/deny/refuse
+Anyone  -> kleros.execute()  -> ArbitrableX402r.executeRuling()
+            PayerWins:  operator.refundInEscrow() (RefundRequest auto-records)
+            ReceiverWins: RefundRequest.deny()
+            Refused:      RefundRequest.refuse()
 ```
 
 `rule()` only stores the ruling. `executeRuling()` acts on it. This split prevents Kleros from getting stuck if the x402r call reverts.
@@ -30,7 +33,7 @@ import { klerosActions, KlerosRuling } from './kleros-plugin/index.js'
 
 // payer: request refund + create dispute + submit evidence
 const payer = createPayerClient(payerConfig).extend(klerosActions(klerosConfig))
-await payer.kleros.request(paymentInfo, amount, 0n, evidence)
+await payer.kleros.request(paymentInfo, amount, evidence)
 
 // arbiter: discover dispute on-chain, give ruling, execute
 const arbiter = createArbiterClient(arbiterConfig).extend(klerosActions(klerosConfig))
@@ -73,10 +76,10 @@ The plugin extends any x402r SDK client via `.extend()`.
 const payer = createPayerClient(config).extend(klerosActions(klerosConfig))
 
 // request() bundles: refund request + Kleros dispute + evidence submission
-const { dispute } = await payer.kleros.request(paymentInfo, amount, nonce, evidence)
+const { dispute } = await payer.kleros.request(paymentInfo, amount, evidence)
 
 // submitEvidence() is for adding additional evidence later
-await payer.kleros.submitEvidence(paymentInfo, nonce, moreEvidence, dispute.arbitratorDisputeID)
+await payer.kleros.submitEvidence(moreEvidence, dispute.arbitratorDisputeID)
 ```
 
 **Arbiter:**
@@ -125,11 +128,11 @@ await arbiter.kleros.execute(localDisputeID, paymentInfo)
 | Contract | What it does |
 |----------|-------------|
 | `ProtocolArbitrable` | Abstract base. Receives rulings via `rule()`, emits evidence events, manages dispute storage. Reusable by any protocol. |
-| `ArbitrableX402r` | Extends `ProtocolArbitrable`. `createDispute()` links a Kleros dispute to a refund request. `executeRuling()` calls `approve()`, `deny()`, or `refuse()` based on the ruling. |
+| `ArbitrableX402r` | Extends `ProtocolArbitrable`. `createDispute()` links a Kleros dispute to a refund request. `executeRuling()` calls `operator.refundInEscrow()`, `deny()`, or `refuse()` based on the ruling. |
 
 ## Notes
 
-- **Ruling outcomes** — ruling 1 (PayerWins) calls `approve()`, ruling 2 (ReceiverWins) calls `deny()`, ruling 0 (RefusedToArbitrate) calls `refuse()`. Ruling 0 closes the request (not left pending).
+- **Ruling outcomes** — ruling 1 (PayerWins) calls `operator.refundInEscrow()` (RefundRequest auto-records approval), ruling 2 (ReceiverWins) calls `deny()`, ruling 0 (RefusedToArbitrate) calls `refuse()`. Ruling 0 closes the request (not left pending).
 - **Two dispute IDs** — `localDisputeID` is ArbitrableX402r's internal index. `arbitratorDisputeID` is Kleros's ID. `request()` returns both. `getLatestDispute()` resolves both on-chain.
 - **Testnet only** — `giveRuling()` simulates jurors via `KlerosCoreRuler`. Not needed on mainnet. `execute()` works the same on both.
 - **Ruler UI** — for manual testnet rulings outside the scripts, use the [Kleros devtools UI](https://dev--kleros-v2-testnet-devtools.netlify.app/ruler).
