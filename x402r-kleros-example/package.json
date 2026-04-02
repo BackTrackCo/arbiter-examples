@@ -17,8 +17,8 @@
   "dependencies": {
     "@kleros/kleros-v2-contracts": "^0.12.0",
     "@pinata/sdk": "^2.1.0",
-    "@x402r/core": "link:../../x402r-sdk/packages/core",
-    "@x402r/sdk": "link:../../x402r-sdk/packages/sdk",
+    "@x402r/core": "0.1.0",
+    "@x402r/sdk": "0.1.0",
     "viem": "2.47.1"
   },
   "devDependencies": {

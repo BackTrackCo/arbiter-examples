@@ -15,11 +15,11 @@ importers:
         specifier: ^2.1.0
         version: 2.1.0
       '@x402r/core':
-        specifier: link:../../x402r-sdk/packages/core
-        version: link:../../x402r-sdk/packages/core
+        specifier: 0.1.0
+        version: 0.1.0(typescript@5.9.3)
       '@x402r/sdk':
-        specifier: link:../../x402r-sdk/packages/sdk
-        version: link:../../x402r-sdk/packages/sdk
+        specifier: 0.1.0
+        version: 0.1.0(typescript@5.9.3)
       viem:
         specifier: 2.47.1
         version: 2.47.1(typescript@5.9.3)
@@ -466,6 +466,17 @@ packages:
 
   '@types/node@22.19.15':
     resolution: {integrity: sha512-F0R/h2+dsy5wJAUe3tAU6oqa2qbWY5TpNfL/RGmo1y38hiyO1w3x2jPtt76wmuaJI4DQnOBu21cNXQ2STIUUWg==}
+
+  '@x402r/core@0.1.0':
+    resolution: {integrity: sha512-gVehVn6gcfghEEeXJJt0qewHMBiiRXv+P1ghCLJ7s8hZ/7DWHohCP51L/oYTLZENSDcYWkmT4rbAEVr7IfWXDw==}
+    peerDependencies:
+      '@x402r/evm': '>=0.0.3'
+    peerDependenciesMeta:
+      '@x402r/evm':
+        optional: true
+
+  '@x402r/sdk@0.1.0':
+    resolution: {integrity: sha512-FkJWr6ydC7f2ETgZoz0RRu+GZsudBxXYBa5Te391DV5lJpNmbKQT/UEZ7lCLRli6FviDWJg3xyUyd+e8fXDjeg==}
 
   '@yarnpkg/lockfile@1.1.0':
     resolution: {integrity: sha512-GpSwvyXOcOOlV70vbnzjj4fW5xW/FdUF6nQEt1ENy7m4ZCczi1+/buVUPAqmGfqznsORNFzUMjctTIp8a9tuCQ==}
@@ -2053,6 +2064,26 @@ snapshots:
   '@types/node@22.19.15':
     dependencies:
       undici-types: 6.21.0
+
+  '@x402r/core@0.1.0(typescript@5.9.3)':
+    dependencies:
+      viem: 2.47.1(typescript@5.9.3)
+    transitivePeerDependencies:
+      - bufferutil
+      - typescript
+      - utf-8-validate
+      - zod
+
+  '@x402r/sdk@0.1.0(typescript@5.9.3)':
+    dependencies:
+      '@x402r/core': 0.1.0(typescript@5.9.3)
+      viem: 2.47.1(typescript@5.9.3)
+    transitivePeerDependencies:
+      - '@x402r/evm'
+      - bufferutil
+      - typescript
+      - utf-8-validate
+      - zod
 
   '@yarnpkg/lockfile@1.1.0': {}
 
