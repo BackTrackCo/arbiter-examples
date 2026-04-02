@@ -1,5 +1,7 @@
 import express from "express";
 import cors from "cors";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { type Address, type Hex, erc20Abi, formatUnits, keccak256, toBytes } from "viem";
 import { createX402r } from "@x402r/sdk";
 import { type GarbageVerdict } from "./garbage-detector.js";
@@ -50,8 +52,43 @@ interface StoredVerdict {
   timestamp: number;
 }
 
-const MAX_VERDICTS = 10_000;
-const verdictStore = new Map<string, StoredVerdict>();
+// ---------------------------------------------------------------------------
+// Verdict persistence -- survives arbiter restarts so clients can always
+// retrieve the payload the arbiter evaluated (needed for anti-cheating).
+// Each verdict is stored as a JSON file in VERDICTS_DIR keyed by tx hash.
+// ---------------------------------------------------------------------------
+
+const VERDICTS_DIR = process.env.VERDICTS_DIR ?? "verdicts";
+const verdictCache = new Map<string, StoredVerdict>();
+
+function ensureVerdictDir() {
+  if (!existsSync(VERDICTS_DIR)) mkdirSync(VERDICTS_DIR, { recursive: true });
+}
+
+function saveVerdict(tx: string, verdict: StoredVerdict) {
+  ensureVerdictDir();
+  const safe = tx.replace(/[^a-zA-Z0-9x]/g, "");
+  writeFileSync(join(VERDICTS_DIR, `${safe}.json`), JSON.stringify(verdict));
+  verdictCache.set(tx, verdict);
+}
+
+function loadVerdict(tx: string): StoredVerdict | undefined {
+  if (verdictCache.has(tx)) return verdictCache.get(tx);
+  const safe = tx.replace(/[^a-zA-Z0-9x]/g, "");
+  const path = join(VERDICTS_DIR, `${safe}.json`);
+  if (!existsSync(path)) return undefined;
+  try {
+    const v = JSON.parse(readFileSync(path, "utf-8")) as StoredVerdict;
+    verdictCache.set(tx, v);
+    return v;
+  } catch { return undefined; }
+}
+
+function getVerdictCount(): number {
+  ensureVerdictDir();
+  try { return readdirSync(VERDICTS_DIR).filter((f) => f.endsWith(".json")).length; }
+  catch { return verdictCache.size; }
+}
 
 const app = express();
 app.use(cors());
@@ -144,12 +181,7 @@ app.post("/verify", async (req, res) => {
       }
     }
 
-    // Evict oldest verdict if store is full
-    if (verdictStore.size >= MAX_VERDICTS) {
-      const oldest = verdictStore.keys().next().value;
-      if (oldest) verdictStore.delete(oldest);
-    }
-    verdictStore.set(transaction, stored);
+    saveVerdict(transaction, stored);
     res.json({
       verdict: gv.verdict,
       reason: gv.reason,
@@ -163,7 +195,7 @@ app.post("/verify", async (req, res) => {
 });
 
 app.get("/verdict/:transaction", (req, res) => {
-  const stored = verdictStore.get(req.params.transaction);
+  const stored = loadVerdict(req.params.transaction);
   if (!stored) { res.status(404).json({ error: "Not found" }); return; }
   res.json({
     verdict: stored.verdict.verdict,
@@ -182,7 +214,7 @@ app.get("/verdict/:transaction", (req, res) => {
 // Clients use this to verify the merchant forwarded the same content they received.
 // Compare: keccak256(this payload) should match verdict.commitment.responseHash
 app.get("/verdict/:transaction/payload", (req, res) => {
-  const stored = verdictStore.get(req.params.transaction);
+  const stored = loadVerdict(req.params.transaction);
   if (!stored) { res.status(404).json({ error: "Not found" }); return; }
   res.json({
     responseBody: stored.responseBody,
@@ -212,7 +244,7 @@ app.get("/health", (_req, res) => {
     operator: operatorAddress ?? null,
     provider: provider.name,
     seed: INFERENCE_SEED,
-    verdictCount: verdictStore.size,
+    verdictCount: getVerdictCount(),
   });
 });
 
