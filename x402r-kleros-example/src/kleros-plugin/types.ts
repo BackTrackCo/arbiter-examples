@@ -72,7 +72,7 @@ export interface DisputeInfo {
 
 export interface X402rDisputeData {
   refundRequest: Address
-  nonce: bigint
+  paymentInfoHash: Hex
   refundAmount: bigint
   executed: boolean
 }
@@ -88,7 +88,6 @@ export type KlerosActions = {
     request(
       paymentInfo: PaymentInfo,
       amount: bigint,
-      nonce: bigint,
       evidence?: KlerosEvidence,
     ): Promise<RequestResult>
 

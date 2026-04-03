@@ -30,7 +30,6 @@ async function main() {
 
   // --- 2. Review payer's evidence ---
   console.log('\n2. Reviewing payer evidence...')
-  // nonce from the dispute data
   const evidence = await merchant.kleros.getEvidence(arbitratorDisputeID)
   for (const e of evidence) {
     console.log(`  - ${e.name}: ${e.description}`)

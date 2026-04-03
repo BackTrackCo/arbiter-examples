@@ -34,7 +34,6 @@ async function main() {
   const { localDisputeID, arbitratorDisputeID, dispute } = await arbiter.kleros.getLatestDispute()
   console.log(`  Local dispute:   ${localDisputeID}`)
   console.log(`  Arbitrator ID:   ${arbitratorDisputeID}`)
-  console.log(`  Nonce:           ${dispute.nonce}`)
   console.log(`  Refund amount:   ${dispute.refundAmount}`)
 
   if (dispute.executed) throw new Error('Dispute already executed')
@@ -48,7 +47,6 @@ async function main() {
 
   // --- 2. Review evidence ---
   console.log('\n2. Reviewing evidence...')
-  // nonce 0 = first refund request for this payment
   const evidence = await arbiter.kleros.getEvidence(arbitratorDisputeID)
   for (const e of evidence) {
     console.log(`  - ${e.name}: ${e.description}`)
@@ -67,7 +65,7 @@ async function main() {
   console.log(`  Execute tx: ${result.txHash}`)
 
   // --- 5. Verify ---
-  const finalRequest = await arbiter.refund!.get(paymentInfo, dispute.nonce)
+  const finalRequest = await arbiter.refund!.get(paymentInfo)
   const statusLabels: Record<number, string> = {
     0: 'Pending', 1: 'Approved', 2: 'Denied', 3: 'Cancelled', 4: 'Refused',
   }

@@ -23,9 +23,12 @@ struct PaymentInfo {
 }
 
 interface IRefundRequest {
-    function approve(PaymentInfo calldata paymentInfo, uint256 nonce, uint120 amount) external;
-    function deny(PaymentInfo calldata paymentInfo, uint256 nonce) external;
-    function refuse(PaymentInfo calldata paymentInfo, uint256 nonce) external;
+    function deny(PaymentInfo calldata paymentInfo) external;
+    function refuse(PaymentInfo calldata paymentInfo) external;
+}
+
+interface IPaymentOperator {
+    function refundInEscrow(PaymentInfo calldata paymentInfo, uint120 amount, bytes calldata data) external;
 }
 
 // ---------------------------------------------------------------------------
@@ -39,7 +42,7 @@ contract ArbitrableX402r is ProtocolArbitrable {
 
     struct X402rDisputeData {
         address refundRequest;
-        uint256 nonce;
+        bytes32 paymentInfoHash;
         uint120 refundAmount;
         bool executed;
     }
@@ -55,7 +58,6 @@ contract ArbitrableX402r is ProtocolArbitrable {
         uint256 indexed localDisputeID,
         uint256 indexed arbitratorDisputeID,
         address indexed refundRequest,
-        uint256 nonce,
         uint120 refundAmount
     );
 
@@ -65,6 +67,7 @@ contract ArbitrableX402r is ProtocolArbitrable {
 
     error OnlyPayer();
     error DuplicateDispute();
+    error PaymentInfoMismatch();
     error NotRuled();
     error AlreadyExecuted();
 
@@ -79,25 +82,28 @@ contract ArbitrableX402r is ProtocolArbitrable {
     function createDispute(
         address _refundRequest,
         PaymentInfo calldata _paymentInfo,
-        uint256 _nonce,
         uint120 _refundAmount,
         bytes calldata _extraData
     ) external payable returns (uint256 arbitratorDisputeID, uint256 localDisputeID) {
         if (msg.sender != _paymentInfo.payer) revert OnlyPayer();
 
-        // Dedup: one dispute per (refundRequest, paymentInfoHash, nonce)
-        bytes32 dedupKey = keccak256(abi.encode(_refundRequest, keccak256(abi.encode(_paymentInfo)), _nonce));
+        // Dedup: one dispute per (refundRequest, paymentInfoHash)
+        bytes32 piHash = keccak256(abi.encode(_paymentInfo));
+        bytes32 dedupKey = keccak256(abi.encode(_refundRequest, piHash));
         if (refundToDispute[dedupKey] != 0) revert DuplicateDispute();
 
         (arbitratorDisputeID, localDisputeID) = _createKlerosDispute(_extraData, 2);
 
         x402rDisputes[localDisputeID] = X402rDisputeData({
-            refundRequest: _refundRequest, nonce: _nonce, refundAmount: _refundAmount, executed: false
+            refundRequest: _refundRequest,
+            paymentInfoHash: piHash,
+            refundAmount: _refundAmount,
+            executed: false
         });
 
         refundToDispute[dedupKey] = localDisputeID + 1; // +1 to distinguish from default 0
 
-        emit DisputeCreated(localDisputeID, arbitratorDisputeID, _refundRequest, _nonce, _refundAmount);
+        emit DisputeCreated(localDisputeID, arbitratorDisputeID, _refundRequest, _refundAmount);
     }
 
     // ── Execute Ruling ──────────────────────────────────────────────────────
@@ -110,19 +116,20 @@ contract ArbitrableX402r is ProtocolArbitrable {
 
         X402rDisputeData storage x = x402rDisputes[_localDisputeID];
         if (x.executed) revert AlreadyExecuted();
+        if (keccak256(abi.encode(_paymentInfo)) != x.paymentInfoHash) revert PaymentInfoMismatch();
         x.executed = true;
 
         uint256 ruling = d.ruling;
 
         if (ruling == 1) {
-            // PayerWins — approve refund
-            IRefundRequest(x.refundRequest).approve(_paymentInfo, x.nonce, x.refundAmount);
+            // PayerWins — refund via operator (RefundRequest auto-records approval)
+            IPaymentOperator(_paymentInfo.operator).refundInEscrow(_paymentInfo, x.refundAmount, "");
         } else if (ruling == 2) {
             // ReceiverWins — deny refund
-            IRefundRequest(x.refundRequest).deny(_paymentInfo, x.nonce);
+            IRefundRequest(x.refundRequest).deny(_paymentInfo);
         } else {
             // RefusedToArbitrate (ruling == 0) — mark as refused on x402r
-            IRefundRequest(x.refundRequest).refuse(_paymentInfo, x.nonce);
+            IRefundRequest(x.refundRequest).refuse(_paymentInfo);
         }
 
         emit RulingExecuted(_localDisputeID, ruling);

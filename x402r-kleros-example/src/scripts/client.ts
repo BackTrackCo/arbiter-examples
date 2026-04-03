@@ -79,8 +79,7 @@ async function main() {
   // --- 2. Payer disputes refund via kleros.request() ---
   console.log('\n2. Payer disputing refund...')
   const payer = createPayerClient(sdkConfig).extend(klerosActions(kConfig))
-  // nonce 0 = first refund request for this payment (increments per retry)
-  const result = await payer.kleros.request(paymentInfo, PAYMENT_AMOUNT, 0n, {
+  const result = await payer.kleros.request(paymentInfo, PAYMENT_AMOUNT, {
     name: 'Service Not Delivered',
     description: 'Paid for API access but received 500 errors on all requests.',
   })

@@ -36,7 +36,6 @@ async function createKlerosDispute(
   client: X402r,
   config: KlerosConfig,
   paymentInfo: PaymentInfo,
-  nonce: bigint,
   refundAmount: bigint,
 ): Promise<CreateDisputeResult> {
   const { walletClient, account, publicClient } = requireAccount(client)
@@ -54,7 +53,7 @@ async function createKlerosDispute(
     address: config.arbitrableX402r,
     abi: arbitrableX402rAbi,
     functionName: 'createDispute',
-    args: [refundRequestAddress, paymentInfo, nonce, refundAmount, config.extraData],
+    args: [refundRequestAddress, paymentInfo, refundAmount, config.extraData],
     value: arbCost,
   })
   const txHash = await walletClient.writeContract(request)
@@ -110,13 +109,13 @@ export function klerosActions(config: KlerosConfig) {
 
     return {
       kleros: {
-        async request(paymentInfo, amount, nonce, evidence): Promise<RequestResult> {
+        async request(paymentInfo, amount, evidence): Promise<RequestResult> {
           // 1. Request refund on x402r (uses SDK's refund.request)
-          const requestTxHash = await client.refund!.request(paymentInfo, amount, nonce)
+          const requestTxHash = await client.refund!.request(paymentInfo, amount)
           await client.config.publicClient.waitForTransactionReceipt({ hash: requestTxHash })
 
           // 2. Create Kleros dispute on ArbitrableX402r
-          const dispute = await createKlerosDispute(client, config, paymentInfo, nonce, amount)
+          const dispute = await createKlerosDispute(client, config, paymentInfo, amount)
 
           // 3. Optional: submit evidence to Kleros
           const result: RequestResult = { requestTxHash, dispute }
@@ -207,7 +206,7 @@ export function klerosActions(config: KlerosConfig) {
           })
           return {
             refundRequest: result.refundRequest,
-            nonce: result.nonce,
+            paymentInfoHash: result.paymentInfoHash,
             refundAmount: result.refundAmount,
             executed: result.executed,
           }
@@ -251,7 +250,7 @@ export function klerosActions(config: KlerosConfig) {
           })
           const dispute: X402rDisputeData = {
             refundRequest: result.refundRequest,
-            nonce: result.nonce,
+            paymentInfoHash: result.paymentInfoHash,
             refundAmount: result.refundAmount,
             executed: result.executed,
           }
