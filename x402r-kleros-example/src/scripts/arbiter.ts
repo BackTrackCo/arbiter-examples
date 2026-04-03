@@ -47,7 +47,6 @@ async function main() {
 
   // --- 2. Review evidence ---
   console.log('\n2. Reviewing evidence...')
-  // nonce 0 = first refund request for this payment
   const evidence = await arbiter.kleros.getEvidence(arbitratorDisputeID)
   for (const e of evidence) {
     console.log(`  - ${e.name}: ${e.description}`)

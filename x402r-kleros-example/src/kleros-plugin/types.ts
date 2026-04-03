@@ -72,6 +72,7 @@ export interface DisputeInfo {
 
 export interface X402rDisputeData {
   refundRequest: Address
+  paymentInfoHash: Hex
   refundAmount: bigint
   executed: boolean
 }

@@ -128,11 +128,11 @@ await arbiter.kleros.execute(localDisputeID, paymentInfo)
 | Contract | What it does |
 |----------|-------------|
 | `ProtocolArbitrable` | Abstract base. Receives rulings via `rule()`, emits evidence events, manages dispute storage. Reusable by any protocol. |
-| `ArbitrableX402r` | Extends `ProtocolArbitrable`. `createDispute()` links a Kleros dispute to a refund request. `executeRuling()` calls `operator.refundInEscrow()`, `deny()`, or `refuse()` based on the ruling. |
+| `ArbitrableX402r` | Extends `ProtocolArbitrable`. `createDispute()` links a Kleros dispute to a refund request and stores a `paymentInfoHash` for calldata verification. `executeRuling()` verifies paymentInfo, then calls `operator.refundInEscrow()`, `deny()`, or `refuse()` based on the ruling. |
 
 ## Notes
 
-- **Ruling outcomes** — ruling 1 (PayerWins) calls `operator.refundInEscrow()` (RefundRequest auto-records approval), ruling 2 (ReceiverWins) calls `deny()`, ruling 0 (RefusedToArbitrate) calls `refuse()`. Ruling 0 closes the request (not left pending).
+- **Ruling outcomes** — ruling 1 (PayerWins) calls `operator.refundInEscrow()` (RefundRequest auto-records approval), ruling 2 (ReceiverWins) calls `deny()`, ruling 0 (RefusedToArbitrate) calls `refuse()`. Ruling 0 closes the request (not left pending). All paths verify `paymentInfo` against the hash stored at dispute creation to prevent griefing.
 - **Two dispute IDs** — `localDisputeID` is ArbitrableX402r's internal index. `arbitratorDisputeID` is Kleros's ID. `request()` returns both. `getLatestDispute()` resolves both on-chain.
 - **Testnet only** — `giveRuling()` simulates jurors via `KlerosCoreRuler`. Not needed on mainnet. `execute()` works the same on both.
 - **Ruler UI** — for manual testnet rulings outside the scripts, use the [Kleros devtools UI](https://dev--kleros-v2-testnet-devtools.netlify.app/ruler).

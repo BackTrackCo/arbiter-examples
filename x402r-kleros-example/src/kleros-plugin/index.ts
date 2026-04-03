@@ -206,6 +206,7 @@ export function klerosActions(config: KlerosConfig) {
           })
           return {
             refundRequest: result.refundRequest,
+            paymentInfoHash: result.paymentInfoHash,
             refundAmount: result.refundAmount,
             executed: result.executed,
           }
@@ -249,6 +250,7 @@ export function klerosActions(config: KlerosConfig) {
           })
           const dispute: X402rDisputeData = {
             refundRequest: result.refundRequest,
+            paymentInfoHash: result.paymentInfoHash,
             refundAmount: result.refundAmount,
             executed: result.executed,
           }

@@ -42,6 +42,7 @@ contract ArbitrableX402r is ProtocolArbitrable {
 
     struct X402rDisputeData {
         address refundRequest;
+        bytes32 paymentInfoHash;
         uint120 refundAmount;
         bool executed;
     }
@@ -66,6 +67,7 @@ contract ArbitrableX402r is ProtocolArbitrable {
 
     error OnlyPayer();
     error DuplicateDispute();
+    error PaymentInfoMismatch();
     error NotRuled();
     error AlreadyExecuted();
 
@@ -86,13 +88,17 @@ contract ArbitrableX402r is ProtocolArbitrable {
         if (msg.sender != _paymentInfo.payer) revert OnlyPayer();
 
         // Dedup: one dispute per (refundRequest, paymentInfoHash)
-        bytes32 dedupKey = keccak256(abi.encode(_refundRequest, keccak256(abi.encode(_paymentInfo))));
+        bytes32 piHash = keccak256(abi.encode(_paymentInfo));
+        bytes32 dedupKey = keccak256(abi.encode(_refundRequest, piHash));
         if (refundToDispute[dedupKey] != 0) revert DuplicateDispute();
 
         (arbitratorDisputeID, localDisputeID) = _createKlerosDispute(_extraData, 2);
 
         x402rDisputes[localDisputeID] = X402rDisputeData({
-            refundRequest: _refundRequest, refundAmount: _refundAmount, executed: false
+            refundRequest: _refundRequest,
+            paymentInfoHash: piHash,
+            refundAmount: _refundAmount,
+            executed: false
         });
 
         refundToDispute[dedupKey] = localDisputeID + 1; // +1 to distinguish from default 0
@@ -110,6 +116,7 @@ contract ArbitrableX402r is ProtocolArbitrable {
 
         X402rDisputeData storage x = x402rDisputes[_localDisputeID];
         if (x.executed) revert AlreadyExecuted();
+        if (keccak256(abi.encode(_paymentInfo)) != x.paymentInfoHash) revert PaymentInfoMismatch();
         x.executed = true;
 
         uint256 ruling = d.ruling;
