@@ -1,2 +1,8 @@
+node_modules/
 cache/
 out/
+dist/
+.turbo/
+.env
+.env.*
+!.env.*.example
