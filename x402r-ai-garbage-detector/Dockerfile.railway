@@ -60,7 +60,6 @@ RUN pnpm install --prod
 
 COPY --from=builder /app/dist ./dist
 
-VOLUME /app/verdicts
 EXPOSE 3001
 
 CMD ["node", "dist/arbiter.js"]
