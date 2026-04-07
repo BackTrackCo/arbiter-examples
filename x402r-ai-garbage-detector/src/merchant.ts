@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import type { Address } from "viem";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { CommerceServerScheme } from "@x402r/evm/commerce/server";
@@ -9,15 +10,17 @@ import {
 } from "@x402r/evm/extensions/attestation";
 import { authCaptureEscrow, tokenCollector, forwardToArbiter } from "@x402r/helpers";
 import { CHAIN_ID } from "./config.js";
-import { createClients, loadContext } from "./scripts/shared.js";
+import { loadContext } from "./scripts/shared.js";
 
 // ---------------------------------------------------------------------------
-// Merchant (wallet): EIP-712 receipt signing with merchant's private key
+// Merchant server — no private key needed, just an address to receive payments
 //
-// Usage: FACILITATOR_URL=http://localhost:4022 pnpm run merchant
+// Usage: MERCHANT_ADDRESS=0x... FACILITATOR_URL=... pnpm run merchant
 // ---------------------------------------------------------------------------
 
-const { account } = createClients();
+const MERCHANT_ADDRESS = process.env.MERCHANT_ADDRESS as Address;
+if (!MERCHANT_ADDRESS) throw new Error("MERCHANT_ADDRESS env required");
+
 const PORT = Number(process.env.PORT ?? process.env.MERCHANT_PORT ?? 4021);
 const FACILITATOR_URL = process.env.FACILITATOR_URL;
 if (!FACILITATOR_URL) throw new Error("FACILITATOR_URL env required");
@@ -41,7 +44,7 @@ app.use(paymentMiddleware({
       scheme: "commerce" as const,
       network: networkId,
       price: "$0.01",
-      payTo: account.address,
+      payTo: MERCHANT_ADDRESS,
       extra: {
         escrowAddress: authCaptureEscrow,
         operatorAddress: ctx.operatorAddress,
@@ -57,7 +60,7 @@ app.use(paymentMiddleware({
       scheme: "commerce" as const,
       network: networkId,
       price: "$0.01",
-      payTo: account.address,
+      payTo: MERCHANT_ADDRESS,
       extra: {
         escrowAddress: authCaptureEscrow,
         operatorAddress: ctx.operatorAddress,
@@ -79,7 +82,7 @@ app.get("/garbage", (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`[merchant] Running on :${PORT} (EIP-712 receipts)`);
-  console.log(`[merchant] Pay to: ${account.address}, Operator: ${ctx.operatorAddress}`);
+  console.log(`[merchant] Running on :${PORT}`);
+  console.log(`[merchant] Pay to: ${MERCHANT_ADDRESS}, Operator: ${ctx.operatorAddress}`);
   console.log(`[merchant] Arbiter: ${ARBITER_URL}`);
 });
