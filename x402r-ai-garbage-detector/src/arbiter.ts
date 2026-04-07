@@ -287,6 +287,19 @@ app.post("/attest/identity", (_req, res) => {
       verdicts: "GET /verdict/:tx — retrieve the verdict for a given payment transaction hash.",
       payload: "GET /verdict/:tx/payload — retrieve the evaluated response body (payer auth required).",
     },
+    paymentScheme: {
+      scheme: "commerce",
+      description: "Refundable payments via x402r commerce scheme. Funds are held in escrow during delivery verification. If the arbiter detects garbage, the payer is refunded automatically.",
+      flow: [
+        "1. Client requests a paid endpoint, receives 402 with payment requirements",
+        "2. Client signs an ERC-3009 transferWithAuthorization + EIP-712 paymentInfo",
+        "3. Client retries with PAYMENT-SIGNATURE header (base64-encoded payload)",
+        "4. Merchant forwards to facilitator for verify + settle (funds enter escrow)",
+        "5. Merchant serves content, forwards response body to arbiter",
+        "6. Arbiter evaluates: PASS releases funds to merchant, FAIL refunds payer",
+      ],
+      sdk: "npm install @x402/fetch @x402r/evm — use wrapFetchWithPayment() with CommerceEvmScheme",
+    },
   });
 });
 
