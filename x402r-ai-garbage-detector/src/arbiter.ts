@@ -281,6 +281,12 @@ app.post("/attest/identity", (_req, res) => {
     provider: provider.name,
     operator: operatorAddress ?? null,
     chains: CHAIN_IDS,
+    description: "AI delivery protection arbiter. Evaluates paid API responses for obvious garbage (empty bodies, error pages, placeholder text, gibberish). PASS releases payment to merchant. FAIL triggers automatic refund to payer.",
+    skills: {
+      evaluate: "POST /verify — submit a response body for garbage detection. Returns PASS/FAIL verdict with commitment hash.",
+      verdicts: "GET /verdict/:tx — retrieve the verdict for a given payment transaction hash.",
+      payload: "GET /verdict/:tx/payload — retrieve the evaluated response body (payer auth required).",
+    },
   });
 });
 
