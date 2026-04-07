@@ -1,0 +1,8 @@
+{
+  "operatorAddress": "0x673Dd1f107cDa8E992b4DBd5cB61f5b6c017f3B7",
+  "escrowPeriodAddress": "0x0BB1003Ad5D229C019F19F6afaB1907FD52d9719",
+  "arbiterConditionAddress": "0x60fA8B70EA062bd7998e74d97a86C7bf23512e5A",
+  "releaseConditionAddress": "0xB12bEd3aA852e8a1C58aeb8272214cF42aE15244",
+  "refundInEscrowConditionAddress": "0xE24ba4dF41fB3D04D317a7B56F443e3AcC2d7719",
+  "authorizeRecorderAddress": "0xE80b4151a41115FA088441dC9823b4A44523B0F1"
+}
