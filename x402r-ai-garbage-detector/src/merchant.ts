@@ -18,7 +18,7 @@ import { createClients, loadContext } from "./scripts/shared.js";
 // ---------------------------------------------------------------------------
 
 const { account } = createClients();
-const PORT = Number(process.env.MERCHANT_PORT ?? 4021);
+const PORT = Number(process.env.PORT ?? process.env.MERCHANT_PORT ?? 4021);
 const FACILITATOR_URL = process.env.FACILITATOR_URL;
 if (!FACILITATOR_URL) throw new Error("FACILITATOR_URL env required");
 const ARBITER_URL = process.env.ARBITER_URL ?? "http://localhost:3001";

@@ -24,7 +24,7 @@ import { createClients, getChainClients, x402rConfig, loadContext } from "./scri
 
 const clients = createClients();
 const provider = createProvider(clients.account);
-const PORT = Number(process.env.ARBITER_PORT ?? 3001);
+const PORT = Number(process.env.PORT ?? process.env.ARBITER_PORT ?? 3001);
 
 const gdConfig = { provider, seed: INFERENCE_SEED };
 
