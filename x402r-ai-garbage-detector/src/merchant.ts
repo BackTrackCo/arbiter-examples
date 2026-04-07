@@ -59,7 +59,7 @@ app.use(paymentMiddleware({
         maxFeeBps: 500,
       },
     }],
-    ...declareAttestationExtension(),
+    extensions: declareAttestationExtension(),
   },
   "GET /garbage": {
     accepts: [{
@@ -75,7 +75,7 @@ app.use(paymentMiddleware({
         maxFeeBps: 500,
       },
     }],
-    ...declareAttestationExtension(),
+    extensions: declareAttestationExtension(),
   },
 }, resourceServer));
 
