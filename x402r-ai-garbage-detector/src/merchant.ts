@@ -31,7 +31,7 @@ const networkId = `eip155:${CHAIN_ID}` as const;
 let operatorAddress = process.env.OPERATOR_ADDRESS as Address | undefined;
 if (!operatorAddress) {
   const ctx = loadContext();
-  operatorAddress = operatorAddress;
+  operatorAddress = ctx.operatorAddress;
 }
 
 const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
@@ -41,6 +41,7 @@ const resourceServer = new x402ResourceServer(facilitatorClient)
   .onAfterSettle(forwardToArbiter(ARBITER_URL));
 
 const app = express();
+app.set("trust proxy", true);
 app.use(cors());
 
 app.use(paymentMiddleware({
