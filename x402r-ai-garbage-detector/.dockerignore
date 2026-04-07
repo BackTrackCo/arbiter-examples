@@ -1,6 +1,5 @@
 node_modules
 dist
-context.json
 .env
 .env.*
 !.env.example
