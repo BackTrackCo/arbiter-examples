@@ -59,7 +59,6 @@ RUN node -e " \
 RUN pnpm install --prod
 
 COPY --from=builder /app/dist ./dist
-COPY context.json ./
 
 EXPOSE 4021
 

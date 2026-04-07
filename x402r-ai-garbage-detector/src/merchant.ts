@@ -15,7 +15,7 @@ import { loadContext } from "./scripts/shared.js";
 // ---------------------------------------------------------------------------
 // Merchant server — no private key needed, just an address to receive payments
 //
-// Usage: MERCHANT_ADDRESS=0x... FACILITATOR_URL=... pnpm run merchant
+// Usage: MERCHANT_ADDRESS=0x... OPERATOR_ADDRESS=0x... FACILITATOR_URL=... pnpm run merchant
 // ---------------------------------------------------------------------------
 
 const MERCHANT_ADDRESS = process.env.MERCHANT_ADDRESS as Address;
@@ -27,7 +27,12 @@ if (!FACILITATOR_URL) throw new Error("FACILITATOR_URL env required");
 const ARBITER_URL = process.env.ARBITER_URL ?? "http://localhost:3001";
 const networkId = `eip155:${CHAIN_ID}` as const;
 
-const ctx = loadContext();
+// Prefer env var, fall back to context.json
+let operatorAddress = process.env.OPERATOR_ADDRESS as Address | undefined;
+if (!operatorAddress) {
+  const ctx = loadContext();
+  operatorAddress = operatorAddress;
+}
 
 const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
 const resourceServer = new x402ResourceServer(facilitatorClient)
@@ -47,9 +52,9 @@ app.use(paymentMiddleware({
       payTo: MERCHANT_ADDRESS,
       extra: {
         escrowAddress: authCaptureEscrow,
-        operatorAddress: ctx.operatorAddress,
+        operatorAddress: operatorAddress,
         tokenCollector,
-        feeReceiver: ctx.operatorAddress,
+        feeReceiver: operatorAddress,
         maxFeeBps: 500,
       },
     }],
@@ -63,9 +68,9 @@ app.use(paymentMiddleware({
       payTo: MERCHANT_ADDRESS,
       extra: {
         escrowAddress: authCaptureEscrow,
-        operatorAddress: ctx.operatorAddress,
+        operatorAddress: operatorAddress,
         tokenCollector,
-        feeReceiver: ctx.operatorAddress,
+        feeReceiver: operatorAddress,
         maxFeeBps: 500,
       },
     }],
@@ -83,6 +88,6 @@ app.get("/garbage", (_req, res) => {
 
 app.listen(PORT, () => {
   console.log(`[merchant] Running on :${PORT}`);
-  console.log(`[merchant] Pay to: ${MERCHANT_ADDRESS}, Operator: ${ctx.operatorAddress}`);
+  console.log(`[merchant] Pay to: ${MERCHANT_ADDRESS}, Operator: ${operatorAddress}`);
   console.log(`[merchant] Arbiter: ${ARBITER_URL}`);
 });
