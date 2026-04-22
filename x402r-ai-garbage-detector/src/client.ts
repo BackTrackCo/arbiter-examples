@@ -28,6 +28,21 @@ async function discoverArbiterUrl(merchantUrl: string): Promise<string | null> {
   }
 }
 
+// `x-payment-transaction` comes back null on current x402 versions; the real
+// settlement hash ships base64-encoded in `payment-response`. Check both.
+function extractSettleTx(res: Response): string | null {
+  const direct = res.headers.get("x-payment-transaction");
+  if (direct) return direct;
+  const pr = res.headers.get("payment-response") ?? res.headers.get("x-payment-response");
+  if (!pr) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(pr, "base64").toString("utf-8"));
+    return typeof parsed?.transaction === "string" ? parsed.transaction : null;
+  } catch {
+    return null;
+  }
+}
+
 async function main() {
   const { account } = createClients();
   const networkId = `eip155:${CHAIN_ID}` as const;
@@ -76,7 +91,11 @@ async function main() {
   await new Promise((r) => setTimeout(r, 2000));
 
   for (const res of [res1, res2]) {
-    const tx = res.headers.get("x-payment-transaction") ?? "unknown";
+    const tx = extractSettleTx(res);
+    if (!tx) {
+      console.log(`  tx=unknown (no settlement hash in response headers)`);
+      continue;
+    }
     try {
       const vRes = await fetch(`${arbiterUrl}/verdict/${tx}`);
       if (vRes.ok) {
