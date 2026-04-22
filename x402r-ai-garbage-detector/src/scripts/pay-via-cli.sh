@@ -15,6 +15,6 @@ set -euo pipefail
 
 : "${PRIVATE_KEY:?PRIVATE_KEY env required (raw 0x-prefixed hex)}"
 MERCHANT_URL="${MERCHANT_URL:-http://localhost:4021}"
-PATH_="${1:-/weather}"
+ROUTE="${1:-/weather}"
 
-PRIVATE_KEY="$PRIVATE_KEY" npx --yes @x402r/cli@~0.2 pay "${MERCHANT_URL}${PATH_}" --json
+PRIVATE_KEY="$PRIVATE_KEY" npx --yes @x402r/cli@~0.2 pay "${MERCHANT_URL}${ROUTE}" --json
