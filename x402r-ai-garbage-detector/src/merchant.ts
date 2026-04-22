@@ -74,8 +74,9 @@ const app = express();
 app.set("trust proxy", true);
 app.use(cors());
 
-// RFC 5988 Link header on 402 responses so agents have a machine-readable
-// pointer to docs without heuristics.
+// RFC 5988 Link header on every 402 response (paid routes and any future
+// non-payment 402) so agents have a machine-readable pointer to docs.
+// Must wrap res.status(); res.on('finish') fires after headers are sent.
 app.use((_req, res, next) => {
   const originalStatus = res.status.bind(res);
   res.status = (code: number) => {
