@@ -154,6 +154,38 @@ const sdk = createX402r({ ... }).extend(
 | **`release(paymentInfo, amount?)`** | Release escrowed funds (arbiter calls on PASS) |
 | **`evaluateAndRelease(responseBody, paymentInfo, amount?)`** | Evaluate + release in one call |
 
+## Pay via curl / CLI
+
+The merchant returns a self-describing 402 so humans and cold agents don't need
+the SDK to get started:
+
+```bash
+$ curl -i http://localhost:4021/weather
+HTTP/1.1 402 Payment Required
+Link: <https://docs.x402r.org>; rel="help"
+PAYMENT-REQUIRED: eyJ4NDAy...      # base64-encoded JSON; accepts[], extensions, etc.
+Content-Type: application/json; charset=utf-8
+
+{"error":"Payment required","help":"See payment-required header (base64 JSON) or https://docs.x402r.org"}
+```
+
+To actually pay from the shell, use the wallet-agnostic CLI advertised at
+`POST /attest/identity` under `paymentScheme.cli`:
+
+```bash
+PRIVATE_KEY=0x... npx @x402r/cli@~0.2 pay http://localhost:4021/weather --json
+```
+
+A copy-paste wrapper is included at [`src/scripts/pay-via-cli.sh`](./src/scripts/pay-via-cli.sh):
+
+```bash
+PRIVATE_KEY=0x... ./src/scripts/pay-via-cli.sh          # defaults to /weather
+PRIVATE_KEY=0x... ./src/scripts/pay-via-cli.sh /garbage
+```
+
+This is the same flow `pnpm run client` exercises via the SDK, just without
+installing anything.
+
 ## Scripts
 
 | Script | Purpose |
@@ -162,6 +194,7 @@ const sdk = createX402r({ ... }).extend(
 | `pnpm run arbiter` | Start garbage detection service (long-running) |
 | `pnpm run merchant` | Merchant server (needs wallet) |
 | `pnpm run client` | Make paid requests through x402 flow |
+| `./src/scripts/pay-via-cli.sh` | Pay from the shell via `@x402r/cli` (no SDK install) |
 
 ## Limitations
 

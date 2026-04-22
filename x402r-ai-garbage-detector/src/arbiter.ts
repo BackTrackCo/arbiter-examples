@@ -299,6 +299,7 @@ app.post("/attest/identity", (_req, res) => {
         "6. Arbiter evaluates: PASS releases funds to merchant, FAIL refunds payer",
       ],
       sdk: "npm install @x402/fetch @x402r/evm — use wrapFetchWithPayment() with CommerceEvmScheme",
+      cli: "PRIVATE_KEY=0x... npx @x402r/cli@~0.2 pay <url>",
     },
   });
 });
