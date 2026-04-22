@@ -64,6 +64,22 @@ async function main() {
   console.log(`Initial verdicts: ${v0}`);
 
   // -----------------------------------------------------------------------
+  // Test 0: Cold-agent 402 shape (body + Link header, before any payment)
+  // -----------------------------------------------------------------------
+  console.log("\n=== Test 0: Cold-agent 402 shape ===");
+  const r0 = await fetch(`${MERCHANT_URL}/weather`);
+  assert(r0.status === 402, `402 on unpaid request (got ${r0.status})`);
+  assert(
+    r0.headers.get("Link") === `<https://docs.x402r.org>; rel="help"`,
+    `Link: rel=help header present`,
+  );
+  const body0 = await r0.json() as any;
+  assert(
+    typeof body0?.help === "string" && body0.help.includes("docs.x402r.org"),
+    `help body present (got ${JSON.stringify(body0)})`,
+  );
+
+  // -----------------------------------------------------------------------
   // Test 1: /weather (valid content) -> PASS -> release
   // -----------------------------------------------------------------------
   console.log("\n=== Test 1: /weather (valid content) ===");
