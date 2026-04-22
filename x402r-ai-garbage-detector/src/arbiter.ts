@@ -25,6 +25,9 @@ import { createClients, getChainClients, x402rConfig, loadContext } from "./scri
 const clients = createClients();
 const provider = createProvider(clients.account);
 const PORT = Number(process.env.PORT ?? process.env.ARBITER_PORT ?? 3001);
+// Public URL this arbiter is reachable at, advertised in /attest/identity so
+// clients can find it from the 402 response without prior configuration.
+const ARBITER_PUBLIC_URL = process.env.ARBITER_PUBLIC_URL ?? null;
 
 const gdConfig = { provider, seed: INFERENCE_SEED };
 
@@ -278,6 +281,7 @@ app.post("/attest/identity", (_req, res) => {
   res.json({
     type: "garbage-detection",
     arbiter: clients.account.address,
+    url: ARBITER_PUBLIC_URL,
     provider: provider.name,
     operator: operatorAddress ?? null,
     chains: CHAIN_IDS,
