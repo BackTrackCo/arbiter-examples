@@ -173,7 +173,7 @@ To actually pay from the shell, use the wallet-agnostic CLI advertised at
 `POST /attest/identity` under `paymentScheme.cli`:
 
 ```bash
-PRIVATE_KEY=0x... npx @x402r/cli@^0.2 pay http://localhost:4021/weather --json
+PRIVATE_KEY=0x... npx @x402r/cli@~0.2 pay http://localhost:4021/weather --json
 ```
 
 A copy-paste wrapper is included at [`src/scripts/pay-via-cli.sh`](./src/scripts/pay-via-cli.sh):

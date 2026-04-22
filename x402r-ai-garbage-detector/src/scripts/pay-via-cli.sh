@@ -17,4 +17,4 @@ set -euo pipefail
 MERCHANT_URL="${MERCHANT_URL:-http://localhost:4021}"
 PATH_="${1:-/weather}"
 
-PRIVATE_KEY="$PRIVATE_KEY" npx --yes @x402r/cli@^0.2 pay "${MERCHANT_URL}${PATH_}" --json
+PRIVATE_KEY="$PRIVATE_KEY" npx --yes @x402r/cli@~0.2 pay "${MERCHANT_URL}${PATH_}" --json
