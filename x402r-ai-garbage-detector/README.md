@@ -129,9 +129,6 @@ cp .env.client.example .env.client
 # Fill in PRIVATE_KEY in each + operator addresses from setup
 ```
 
-> **Note:** This example links to workspace `@x402r/core` and `@x402r/sdk` packages.
-> Run `pnpm build` in `x402r-sdk/` first if you haven't already.
-
 ## The Plugin
 
 `.extend(garbageDetectorActions(config))` adds garbage detection methods to any x402r client:
@@ -169,8 +166,11 @@ Content-Type: application/json; charset=utf-8
 {"error":"Payment required","help":"See payment-required header (base64 JSON) or https://docs.x402r.org"}
 ```
 
-To actually pay from the shell, use the wallet-agnostic CLI advertised at
-`POST /attest/identity` under `paymentScheme.cli`:
+To actually pay from the shell, use the wallet-agnostic CLI. The 402 response
+embeds the exact command inline under
+`extensions.attestation.info.identity.paymentScheme.cli`, populated at merchant
+startup from the arbiter's `/attest/identity` endpoint. Note this endpoint
+lives on the arbiter, not the merchant:
 
 ```bash
 PRIVATE_KEY=0x... npx @x402r/cli@~0.2 pay http://localhost:4021/weather --json
