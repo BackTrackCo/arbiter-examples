@@ -82,8 +82,8 @@ interface SavedContext {
   operatorAddress: Address;
   escrowPeriodAddress: Address;
   arbiterConditionAddress: Address;
-  releaseConditionAddress: Address;
-  refundInEscrowConditionAddress: Address;
+  capturePreActionConditionAddress: Address;
+  voidPreActionConditionAddress: Address;
   authorizeRecorderAddress: Address;
 }
 
@@ -101,8 +101,8 @@ export function loadContext(): SavedContext {
     operatorAddress: raw.operatorAddress,
     escrowPeriodAddress: raw.escrowPeriodAddress,
     arbiterConditionAddress: raw.arbiterConditionAddress,
-    releaseConditionAddress: raw.releaseConditionAddress,
-    refundInEscrowConditionAddress: raw.refundInEscrowConditionAddress,
+    capturePreActionConditionAddress: raw.capturePreActionConditionAddress,
+    voidPreActionConditionAddress: raw.voidPreActionConditionAddress,
     authorizeRecorderAddress: raw.authorizeRecorderAddress,
   };
 }

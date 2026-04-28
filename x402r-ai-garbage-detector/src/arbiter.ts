@@ -47,7 +47,7 @@ interface StoredVerdict {
   transaction: string;
   network: string;
   arbiter: Address;
-  releaseHash?: Hex;
+  captureHash?: Hex;
   refundHash?: Hex;
   refundError?: string;
   timestamp: number;
@@ -112,7 +112,7 @@ app.use(express.json({ limit: "1mb" }));
  * Refund the payer immediately on FAIL verdict.
  *
  * The delivery protection v2 operator includes SAC(arbiter) in the
- * refundInEscrowCondition OrCondition, so the arbiter can refund without
+ * voidPreActionCondition OrCondition, so the arbiter can refund without
  * waiting for the escrow period to expire. Independent keepers can also
  * discover payments via the PaymentIndexRecorder and trigger refunds
  * after the escrow window.
@@ -120,7 +120,7 @@ app.use(express.json({ limit: "1mb" }));
 async function refundPayer(sdk: any, paymentInfo: any, transaction: string): Promise<{ hash?: Hex; error?: string }> {
   console.log(`[verify] FAIL — refunding immediately for tx=${transaction ?? "unknown"}`);
   try {
-    const hash = await sdk.payment.refundInEscrow(paymentInfo, paymentInfo.maxAmount);
+    const hash = await sdk.payment.void(paymentInfo, paymentInfo.maxAmount);
     console.log(`[refund] tx=${transaction} refunded: ${hash}`);
     return { hash };
   } catch (err: any) {
@@ -183,13 +183,13 @@ app.post("/verify", async (req, res) => {
 
       if (gv.verdict === "PASS") {
         try {
-          stored.releaseHash = await sdk.garbageDetector.release(pi);
-          console.log(`[verify] Released: ${stored.releaseHash}`);
+          stored.captureHash = await sdk.garbageDetector.capture(pi);
+          console.log(`[verify] Released: ${stored.captureHash}`);
         } catch (err: any) {
           console.error("[verify] Release failed:", err.shortMessage ?? err.message ?? err);
         }
       } else {
-        // FAIL: arbiter can refund immediately (SAC(arbiter) in refundInEscrow OrCondition)
+        // FAIL: arbiter can refund immediately (SAC(arbiter) in void OrCondition)
         const result = await refundPayer(sdk, pi, transaction);
         stored.refundHash = result.hash;
         stored.refundError = result.error;
@@ -201,7 +201,7 @@ app.post("/verify", async (req, res) => {
       verdict: gv.verdict,
       reason: gv.reason,
       commitmentHash: gv.commitment.commitmentHash,
-      releaseHash: stored.releaseHash ?? null,
+      captureHash: stored.captureHash ?? null,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -219,7 +219,7 @@ app.get("/verdict/:transaction", (req, res) => {
     commitment: stored.verdict.commitment,
     responseBodyHash: stored.responseBodyHash,
     arbiter: stored.arbiter,
-    releaseHash: stored.releaseHash ?? null,
+    captureHash: stored.captureHash ?? null,
     refundHash: stored.refundHash ?? null,
     refundError: stored.refundError ?? null,
     timestamp: stored.timestamp,

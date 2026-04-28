@@ -28,7 +28,9 @@ interface IRefundRequest {
 }
 
 interface IPaymentOperator {
-    function refundInEscrow(PaymentInfo calldata paymentInfo, uint120 amount, bytes calldata data) external;
+    /// @notice Voids the entire authorization. Returns held funds to payer.
+    /// @dev Empties the entire authorization in one shot (no partial-void semantic).
+    function void(PaymentInfo calldata paymentInfo, bytes calldata data) external;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,8 +124,10 @@ contract ArbitrableX402r is ProtocolArbitrable {
         uint256 ruling = d.ruling;
 
         if (ruling == 1) {
-            // PayerWins — refund via operator (RefundRequest auto-records approval)
-            IPaymentOperator(_paymentInfo.operator).refundInEscrow(_paymentInfo, x.refundAmount, "");
+            // PayerWins — void via operator (RefundRequest auto-records approval). Note that
+            // void empties the entire authorization regardless of the refundAmount stored in
+            // the dispute data; the refundAmount field is informational on the dispute side.
+            IPaymentOperator(_paymentInfo.operator).void(_paymentInfo, "");
         } else if (ruling == 2) {
             // ReceiverWins — deny refund
             IRefundRequest(x.refundRequest).deny(_paymentInfo);

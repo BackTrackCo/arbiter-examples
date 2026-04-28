@@ -28,8 +28,8 @@ async function main() {
   console.log(`  Operator:              ${deployment.operatorAddress}`);
   console.log(`  EscrowPeriod:          ${deployment.escrowPeriodAddress}`);
   console.log(`  ArbiterCondition:      ${deployment.arbiterConditionAddress}`);
-  console.log(`  ReleaseCondition:      ${deployment.releaseConditionAddress}`);
-  console.log(`  RefundInEscrow:        ${deployment.refundInEscrowConditionAddress}`);
+  console.log(`  CapturePreActionCondition:      ${deployment.capturePreActionConditionAddress}`);
+  console.log(`  Void:        ${deployment.voidPreActionConditionAddress}`);
   console.log(`  AuthorizeRecorder:     ${deployment.authorizeRecorderAddress}`);
   console.log(`  PaymentIndexRecorder:  ${deployment.paymentIndexRecorderAddress}`);
   console.log(`  New: ${deployment.summary.newCount}, existing: ${deployment.summary.existingCount}`);
@@ -38,8 +38,8 @@ async function main() {
     operatorAddress: deployment.operatorAddress,
     escrowPeriodAddress: deployment.escrowPeriodAddress,
     arbiterConditionAddress: deployment.arbiterConditionAddress,
-    releaseConditionAddress: deployment.releaseConditionAddress,
-    refundInEscrowConditionAddress: deployment.refundInEscrowConditionAddress,
+    capturePreActionConditionAddress: deployment.capturePreActionConditionAddress,
+    voidPreActionConditionAddress: deployment.voidPreActionConditionAddress,
     authorizeRecorderAddress: deployment.authorizeRecorderAddress,
   };
   writeFileSync(CONTEXT_FILE, JSON.stringify(context, null, 2));
