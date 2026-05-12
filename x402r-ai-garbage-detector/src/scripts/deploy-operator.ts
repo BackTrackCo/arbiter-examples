@@ -20,27 +20,30 @@ async function main() {
     {
       chainId: CHAIN_ID,
       arbiter: account.address,
-      feeRecipient: account.address,
+      feeReceiver: account.address,
       escrowPeriodSeconds: 120n, // 2 min — LLM evaluation is fast
+      // Add SAC(arbiter) to the void OrCondition so the arbiter can refund
+      // immediately on FAIL without waiting for the escrow period to expire.
+      allowArbiterRefund: true,
     },
   );
 
   console.log(`  Operator:              ${deployment.operatorAddress}`);
   console.log(`  EscrowPeriod:          ${deployment.escrowPeriodAddress}`);
   console.log(`  ArbiterCondition:      ${deployment.arbiterConditionAddress}`);
-  console.log(`  CapturePreActionCondition:      ${deployment.capturePreActionConditionAddress}`);
-  console.log(`  Void:        ${deployment.voidPreActionConditionAddress}`);
-  console.log(`  AuthorizeRecorder:     ${deployment.authorizeRecorderAddress}`);
-  console.log(`  PaymentIndexRecorder:  ${deployment.paymentIndexRecorderAddress}`);
+  console.log(`  CaptureCondition:      ${deployment.captureConditionAddress}`);
+  console.log(`  VoidCondition:         ${deployment.voidConditionAddress}`);
+  console.log(`  AuthorizeHook:         ${deployment.authorizeHookAddress}`);
+  console.log(`  PaymentIndexRecorder:  ${deployment.paymentIndexRecorderHookAddress}`);
   console.log(`  New: ${deployment.summary.newCount}, existing: ${deployment.summary.existingCount}`);
 
   const context = {
     operatorAddress: deployment.operatorAddress,
     escrowPeriodAddress: deployment.escrowPeriodAddress,
     arbiterConditionAddress: deployment.arbiterConditionAddress,
-    capturePreActionConditionAddress: deployment.capturePreActionConditionAddress,
-    voidPreActionConditionAddress: deployment.voidPreActionConditionAddress,
-    authorizeRecorderAddress: deployment.authorizeRecorderAddress,
+    captureConditionAddress: deployment.captureConditionAddress,
+    voidConditionAddress: deployment.voidConditionAddress,
+    authorizeHookAddress: deployment.authorizeHookAddress,
   };
   writeFileSync(CONTEXT_FILE, JSON.stringify(context, null, 2));
   console.log(`\nSaved to ${CONTEXT_FILE}`);

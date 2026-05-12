@@ -120,7 +120,7 @@ app.use(express.json({ limit: "1mb" }));
 async function refundPayer(sdk: any, paymentInfo: any, transaction: string): Promise<{ hash?: Hex; error?: string }> {
   console.log(`[verify] FAIL — refunding immediately for tx=${transaction ?? "unknown"}`);
   try {
-    const hash = await sdk.payment.void(paymentInfo, paymentInfo.maxAmount);
+    const hash = await sdk.payment.voidPayment(paymentInfo);
     console.log(`[refund] tx=${transaction} refunded: ${hash}`);
     return { hash };
   } catch (err: any) {

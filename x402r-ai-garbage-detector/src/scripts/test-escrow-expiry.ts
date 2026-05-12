@@ -34,11 +34,11 @@ async function main() {
   const chain = getViemChain(CHAIN_ID);
   const publicClient = createPublicClient({ chain, transport: http() });
 
-  const recorderAddress = ctx.authorizeRecorderAddress;
+  const hookCombinatorAddress = ctx.authorizeHookAddress;
   const pirAddress = await publicClient.readContract({
-    address: recorderAddress as `0x${string}`,
-    abi: [{ name: "recorders", type: "function", stateMutability: "view", inputs: [{ name: "", type: "uint256" }], outputs: [{ name: "", type: "address" }] }],
-    functionName: "recorders",
+    address: hookCombinatorAddress as `0x${string}`,
+    abi: [{ name: "hooks", type: "function", stateMutability: "view", inputs: [{ name: "", type: "uint256" }], outputs: [{ name: "", type: "address" }] }],
+    functionName: "hooks",
     args: [1n],
   });
 
@@ -171,7 +171,7 @@ async function main() {
   console.log(`Still in escrow: ${isStillInEscrow}`);
 
   try {
-    const refundHash = await sdk.payment.void(paymentInfo, paymentInfo.maxAmount);
+    const refundHash = await sdk.payment.voidPayment(paymentInfo);
     console.log(`Refund tx: ${refundHash}`);
 
     // Wait for receipt
