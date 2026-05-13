@@ -38,10 +38,12 @@ export class OpenAICompatibleProvider implements InferenceProvider {
         Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
+        // `temperature` omitted: newer gpt-4o-mini variants reject any value
+        // other than the default (1). `seed` still drives reproducibility on
+        // models that honor it.
         model: this.model,
         max_tokens: 1024,
         seed,
-        temperature: 0,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
