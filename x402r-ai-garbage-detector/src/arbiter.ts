@@ -25,6 +25,18 @@ import { createClients, getChainClients, x402rConfig, loadContext } from "./scri
 const clients = createClients();
 const provider = createProvider(clients.account);
 const PORT = Number(process.env.PORT ?? process.env.ARBITER_PORT ?? 3001);
+// Public URL this arbiter is reachable at, advertised in /attest/identity so
+// clients can find it from the 402 response without prior configuration.
+// Validated at startup so typos fail fast instead of poisoning every 402 response.
+const ARBITER_PUBLIC_URL = (() => {
+  const raw = process.env.ARBITER_PUBLIC_URL;
+  if (!raw) return undefined;
+  try {
+    return new URL(raw).toString().replace(/\/$/, "");
+  } catch {
+    throw new Error(`ARBITER_PUBLIC_URL is not a valid URL: ${raw}`);
+  }
+})();
 
 const gdConfig = { provider, seed: INFERENCE_SEED };
 
@@ -292,6 +304,7 @@ app.post("/attest/identity", (_req, res) => {
   res.json({
     type: "garbage-detection",
     arbiter: clients.account.address,
+    ...(ARBITER_PUBLIC_URL && { url: ARBITER_PUBLIC_URL }),
     provider: provider.name,
     operator: operatorAddress ?? null,
     chains: CHAIN_IDS,
@@ -313,6 +326,7 @@ app.post("/attest/identity", (_req, res) => {
         "6. Arbiter evaluates: PASS releases funds to merchant, FAIL refunds payer",
       ],
       sdk: "npm install @x402/fetch @x402r/evm — use wrapFetchWithPayment() with AuthCaptureEvmScheme",
+      cli: "PRIVATE_KEY=0x... npx @x402r/cli@~0.2 pay <url>",
     },
   });
 });
