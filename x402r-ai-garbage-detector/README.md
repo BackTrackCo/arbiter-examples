@@ -34,8 +34,8 @@ Three systems work together: x402r (payment escrow), AI inference (content evalu
 2. **Merchant** serves the response, x402 settles the escrow payment via facilitator
 3. **Hook** fires `forwardToArbiter()` which POSTs the response body to the arbiter (async, fire-and-forget)
 4. **Arbiter** evaluates the response via the configured provider:
-   - **PASS** -- calls `sdk.garbageDetector.release(paymentInfo)` to release escrowed funds to merchant
-   - **FAIL** -- does nothing, escrow period expires, anyone calls `refundInEscrow()` for automatic refund
+   - **PASS** -- calls `sdk.garbageDetector.capture(paymentInfo)` to release escrowed funds to merchant
+   - **FAIL** -- does nothing, escrow period expires, anyone calls `void()` for automatic refund
 
 ## Inference Providers
 
@@ -148,7 +148,7 @@ const sdk = createX402r({ ... }).extend(
 | Method | Description |
 |--------|-------------|
 | **`evaluate(responseBody)`** | Run garbage detection, return verdict + commitment |
-| **`release(paymentInfo, amount?)`** | Release escrowed funds (arbiter calls on PASS) |
+| **`capture(paymentInfo, amount?)`** | Release escrowed funds (arbiter calls on PASS) |
 | **`evaluateAndRelease(responseBody, paymentInfo, amount?)`** | Evaluate + release in one call |
 
 ## Pay via curl / CLI

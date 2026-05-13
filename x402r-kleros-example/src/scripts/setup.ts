@@ -63,7 +63,7 @@ async function main() {
     publicClient,
     {
       chainId: CHAIN_ID,
-      feeRecipient: account.address,
+      feeReceiver: account.address,
       arbiter: arbitrableX402rAddress,
       escrowPeriodSeconds: 300n,
       operatorFeeBps: 50n,

@@ -1,6 +1,6 @@
 import { createX402r } from "@x402r/sdk";
 import { toClientEvmSigner } from "@x402/evm";
-import { CommerceEvmScheme } from "@x402r/evm/commerce/client";
+import { AuthCaptureEvmScheme } from "@x402r/evm/authCapture/client";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { wrapFetchWithPayment } from "@x402/fetch";
 import { formatUnits } from "viem";
@@ -8,11 +8,11 @@ import { CHAIN_ID, getViemChain } from "../config.js";
 import { createClients, loadContext, x402rConfig } from "./shared.js";
 
 // ---------------------------------------------------------------------------
-// Test: Escrow period expiry → anyone can call refundInEscrow
+// Test: Escrow period expiry → anyone can call void
 //
 // 1. Make a paid request through the merchant (creates an authorized payment)
 // 2. Wait for the 2-min escrow period to expire
-// 3. Call refundInEscrow as a keeper (not the arbiter)
+// 3. Call void as a keeper (not the arbiter)
 // 4. Verify the refund succeeds
 //
 // Prerequisites: facilitator + merchant running (NOT arbiter — we want the
@@ -34,11 +34,11 @@ async function main() {
   const chain = getViemChain(CHAIN_ID);
   const publicClient = createPublicClient({ chain, transport: http() });
 
-  const recorderAddress = ctx.authorizeRecorderAddress;
+  const hookCombinatorAddress = ctx.authorizeHookAddress;
   const pirAddress = await publicClient.readContract({
-    address: recorderAddress as `0x${string}`,
-    abi: [{ name: "recorders", type: "function", stateMutability: "view", inputs: [{ name: "", type: "uint256" }], outputs: [{ name: "", type: "address" }] }],
-    functionName: "recorders",
+    address: hookCombinatorAddress as `0x${string}`,
+    abi: [{ name: "hooks", type: "function", stateMutability: "view", inputs: [{ name: "", type: "uint256" }], outputs: [{ name: "", type: "address" }] }],
+    functionName: "hooks",
     args: [1n],
   });
 
@@ -80,7 +80,7 @@ async function main() {
   console.log("\n--- Step 1: Make paid request ---");
   const clientSigner = toClientEvmSigner(clients.account);
   const client = new x402Client();
-  client.register(`eip155:${CHAIN_ID}`, new CommerceEvmScheme(clientSigner));
+  client.register(`eip155:${CHAIN_ID}`, new AuthCaptureEvmScheme(clientSigner));
   const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 
   const res = await fetchWithPayment(`${MERCHANT_URL}/weather`);
@@ -165,13 +165,13 @@ async function main() {
     console.log("Escrow period already expired");
   }
 
-  // Step 4: Call refundInEscrow as a keeper
+  // Step 4: Call void as a keeper
   console.log("\n--- Step 4: Refund after escrow expiry ---");
   const isStillInEscrow = await sdk.escrow.isDuringEscrow(paymentInfo);
   console.log(`Still in escrow: ${isStillInEscrow}`);
 
   try {
-    const refundHash = await sdk.payment.refundInEscrow(paymentInfo, paymentInfo.maxAmount);
+    const refundHash = await sdk.payment.voidPayment(paymentInfo);
     console.log(`Refund tx: ${refundHash}`);
 
     // Wait for receipt

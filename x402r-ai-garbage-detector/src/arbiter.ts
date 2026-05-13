@@ -59,7 +59,7 @@ interface StoredVerdict {
   transaction: string;
   network: string;
   arbiter: Address;
-  releaseHash?: Hex;
+  captureHash?: Hex;
   refundHash?: Hex;
   refundError?: string;
   timestamp: number;
@@ -124,7 +124,7 @@ app.use(express.json({ limit: "1mb" }));
  * Refund the payer immediately on FAIL verdict.
  *
  * The delivery protection v2 operator includes SAC(arbiter) in the
- * refundInEscrowCondition OrCondition, so the arbiter can refund without
+ * voidPreActionCondition OrCondition, so the arbiter can refund without
  * waiting for the escrow period to expire. Independent keepers can also
  * discover payments via the PaymentIndexRecorder and trigger refunds
  * after the escrow window.
@@ -132,7 +132,7 @@ app.use(express.json({ limit: "1mb" }));
 async function refundPayer(sdk: any, paymentInfo: any, transaction: string): Promise<{ hash?: Hex; error?: string }> {
   console.log(`[verify] FAIL — refunding immediately for tx=${transaction ?? "unknown"}`);
   try {
-    const hash = await sdk.payment.refundInEscrow(paymentInfo, paymentInfo.maxAmount);
+    const hash = await sdk.payment.voidPayment(paymentInfo);
     console.log(`[refund] tx=${transaction} refunded: ${hash}`);
     return { hash };
   } catch (err: any) {
@@ -162,7 +162,7 @@ app.post("/verify", async (req, res) => {
   const { responseBody, transaction, paymentPayload } = req.body;
   if (!responseBody) { res.status(400).json({ error: "responseBody is required" }); return; }
 
-  const scheme = paymentPayload?.accepted?.scheme ?? "commerce";
+  const scheme = paymentPayload?.accepted?.scheme ?? "authCapture";
   const network = paymentPayload?.accepted?.network ?? `eip155:${CHAIN_IDS[0]}`;
   const chainId = parseChainId(network);
   console.log(`[verify] tx=${transaction ?? "unknown"} scheme=${scheme} chain=${chainId}`);
@@ -178,30 +178,44 @@ app.post("/verify", async (req, res) => {
     console.log(`[verify] ${gv.verdict} — ${gv.reason}`);
 
     const bodyStr = typeof responseBody === "string" ? responseBody : JSON.stringify(responseBody);
-    const rawPaymentInfo = paymentPayload?.payload?.paymentInfo;
-    const payer = (paymentPayload?.payload?.authorization?.from ?? rawPaymentInfo?.payer ?? "0x0") as Address;
+    // authCapture wire payload doesn't carry an inline paymentInfo struct —
+    // reconstruct from accepted requirements + extra + signed authorization.
+    // Spec field renames (captureAuthorizer/captureDeadline/refundDeadline/
+    // feeRecipient) map back to the canonical Solidity PaymentInfo names below.
+    const accepted = paymentPayload?.accepted;
+    const extra = accepted?.extra;
+    const authz = paymentPayload?.payload?.authorization;
+    const payer = (authz?.from ?? "0x0") as Address;
     const stored: StoredVerdict = {
       verdict: gv, responseBody: bodyStr, responseBodyHash: keccak256(toBytes(bodyStr)),
       payer, transaction, network, arbiter: clients.account.address, timestamp: Date.now(),
     };
 
-    if (scheme === "commerce" && rawPaymentInfo) {
+    if (scheme === "authCapture" && accepted && extra && authz) {
       const pi = {
-        ...rawPaymentInfo,
+        operator: extra.captureAuthorizer as Address,
         payer,
-        maxAmount: BigInt(rawPaymentInfo.maxAmount),
-        salt: BigInt(rawPaymentInfo.salt),
+        receiver: accepted.payTo as Address,
+        token: accepted.asset as Address,
+        maxAmount: BigInt(accepted.amount),
+        preApprovalExpiry: Number(authz.validBefore),
+        authorizationExpiry: Number(extra.captureDeadline),
+        refundExpiry: Number(extra.refundDeadline),
+        minFeeBps: Number(extra.minFeeBps),
+        maxFeeBps: Number(extra.maxFeeBps),
+        feeReceiver: extra.feeRecipient as Address,
+        salt: BigInt(paymentPayload.payload.salt),
       };
 
       if (gv.verdict === "PASS") {
         try {
-          stored.releaseHash = await sdk.garbageDetector.release(pi);
-          console.log(`[verify] Released: ${stored.releaseHash}`);
+          stored.captureHash = await sdk.garbageDetector.capture(pi);
+          console.log(`[verify] Released: ${stored.captureHash}`);
         } catch (err: any) {
           console.error("[verify] Release failed:", err.shortMessage ?? err.message ?? err);
         }
       } else {
-        // FAIL: arbiter can refund immediately (SAC(arbiter) in refundInEscrow OrCondition)
+        // FAIL: arbiter can refund immediately (SAC(arbiter) in void OrCondition)
         const result = await refundPayer(sdk, pi, transaction);
         stored.refundHash = result.hash;
         stored.refundError = result.error;
@@ -213,7 +227,7 @@ app.post("/verify", async (req, res) => {
       verdict: gv.verdict,
       reason: gv.reason,
       commitmentHash: gv.commitment.commitmentHash,
-      releaseHash: stored.releaseHash ?? null,
+      captureHash: stored.captureHash ?? null,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -231,7 +245,7 @@ app.get("/verdict/:transaction", (req, res) => {
     commitment: stored.verdict.commitment,
     responseBodyHash: stored.responseBodyHash,
     arbiter: stored.arbiter,
-    releaseHash: stored.releaseHash ?? null,
+    captureHash: stored.captureHash ?? null,
     refundHash: stored.refundHash ?? null,
     refundError: stored.refundError ?? null,
     timestamp: stored.timestamp,
@@ -301,8 +315,8 @@ app.post("/attest/identity", (_req, res) => {
       payload: "GET /verdict/:tx/payload — retrieve the evaluated response body (payer auth required).",
     },
     paymentScheme: {
-      scheme: "commerce",
-      description: "Refundable payments via x402r commerce scheme. Funds are held in escrow during delivery verification. If the arbiter detects garbage, the payer is refunded automatically.",
+      scheme: "authCapture",
+      description: "Refundable payments via x402r authCapture scheme. Funds are held in escrow during delivery verification. If the arbiter detects garbage, the payer is refunded automatically.",
       flow: [
         "1. Client requests a paid endpoint, receives 402 with payment requirements",
         "2. Client signs an ERC-3009 transferWithAuthorization + EIP-712 paymentInfo",
@@ -311,7 +325,7 @@ app.post("/attest/identity", (_req, res) => {
         "5. Merchant serves content, forwards response body to arbiter",
         "6. Arbiter evaluates: PASS releases funds to merchant, FAIL refunds payer",
       ],
-      sdk: "npm install @x402/fetch @x402r/evm — use wrapFetchWithPayment() with CommerceEvmScheme",
+      sdk: "npm install @x402/fetch @x402r/evm — use wrapFetchWithPayment() with AuthCaptureEvmScheme",
       cli: "PRIVATE_KEY=0x... npx @x402r/cli@~0.2 pay <url>",
     },
   });
