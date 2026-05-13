@@ -166,19 +166,33 @@ app.post("/verify", async (req, res) => {
     console.log(`[verify] ${gv.verdict} — ${gv.reason}`);
 
     const bodyStr = typeof responseBody === "string" ? responseBody : JSON.stringify(responseBody);
-    const rawPaymentInfo = paymentPayload?.payload?.paymentInfo;
-    const payer = (paymentPayload?.payload?.authorization?.from ?? rawPaymentInfo?.payer ?? "0x0") as Address;
+    // authCapture wire payload doesn't carry an inline paymentInfo struct —
+    // reconstruct from accepted requirements + extra + signed authorization.
+    // Spec field renames (captureAuthorizer/captureDeadline/refundDeadline/
+    // feeRecipient) map back to the canonical Solidity PaymentInfo names below.
+    const accepted = paymentPayload?.accepted;
+    const extra = accepted?.extra;
+    const authz = paymentPayload?.payload?.authorization;
+    const payer = (authz?.from ?? "0x0") as Address;
     const stored: StoredVerdict = {
       verdict: gv, responseBody: bodyStr, responseBodyHash: keccak256(toBytes(bodyStr)),
       payer, transaction, network, arbiter: clients.account.address, timestamp: Date.now(),
     };
 
-    if (scheme === "authCapture" && rawPaymentInfo) {
+    if (scheme === "authCapture" && accepted && extra && authz) {
       const pi = {
-        ...rawPaymentInfo,
+        operator: extra.captureAuthorizer as Address,
         payer,
-        maxAmount: BigInt(rawPaymentInfo.maxAmount),
-        salt: BigInt(rawPaymentInfo.salt),
+        receiver: accepted.payTo as Address,
+        token: accepted.asset as Address,
+        maxAmount: BigInt(accepted.amount),
+        preApprovalExpiry: Number(authz.validBefore),
+        authorizationExpiry: Number(extra.captureDeadline),
+        refundExpiry: Number(extra.refundDeadline),
+        minFeeBps: Number(extra.minFeeBps),
+        maxFeeBps: Number(extra.maxFeeBps),
+        feeReceiver: extra.feeRecipient as Address,
+        salt: BigInt(paymentPayload.payload.salt),
       };
 
       if (gv.verdict === "PASS") {
