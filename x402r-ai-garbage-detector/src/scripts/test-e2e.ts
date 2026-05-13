@@ -1,5 +1,5 @@
 import { toClientEvmSigner } from "@x402/evm";
-import { CommerceEvmScheme } from "@x402r/evm/commerce/client";
+import { AuthCaptureEvmScheme } from "@x402r/evm/authCapture/client";
 import { x402Client } from "@x402/core/client";
 import { wrapFetchWithPayment } from "@x402/fetch";
 import { privateKeyToAccount } from "viem/accounts";
@@ -22,7 +22,7 @@ const sameWallet = !process.env.CLIENT_PRIVATE_KEY;
 const account = privateKeyToAccount(clientKey);
 const clientSigner = toClientEvmSigner(account);
 const client = new x402Client();
-client.register(`eip155:${CHAIN_ID}`, new CommerceEvmScheme(clientSigner));
+client.register(`eip155:${CHAIN_ID}`, new AuthCaptureEvmScheme(clientSigner));
 const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 
 async function waitForVerdictCount(target: number, timeoutMs = 30_000) {

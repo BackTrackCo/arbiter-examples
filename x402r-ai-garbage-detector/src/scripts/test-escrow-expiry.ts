@@ -1,6 +1,6 @@
 import { createX402r } from "@x402r/sdk";
 import { toClientEvmSigner } from "@x402/evm";
-import { CommerceEvmScheme } from "@x402r/evm/commerce/client";
+import { AuthCaptureEvmScheme } from "@x402r/evm/authCapture/client";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { wrapFetchWithPayment } from "@x402/fetch";
 import { formatUnits } from "viem";
@@ -80,7 +80,7 @@ async function main() {
   console.log("\n--- Step 1: Make paid request ---");
   const clientSigner = toClientEvmSigner(clients.account);
   const client = new x402Client();
-  client.register(`eip155:${CHAIN_ID}`, new CommerceEvmScheme(clientSigner));
+  client.register(`eip155:${CHAIN_ID}`, new AuthCaptureEvmScheme(clientSigner));
   const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 
   const res = await fetchWithPayment(`${MERCHANT_URL}/weather`);

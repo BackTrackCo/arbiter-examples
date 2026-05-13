@@ -1,17 +1,16 @@
 import { x402Facilitator } from "@x402/core/facilitator";
 import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 import { toFacilitatorEvmSigner } from "@x402/evm";
-import { registerCommerceEvmScheme } from "@x402r/evm/commerce/facilitator";
-import { authCaptureEscrow, tokenCollector } from "@x402r/helpers";
+import { registerAuthCaptureEvmScheme } from "@x402r/evm/authCapture/facilitator";
 import express from "express";
 import { createWalletClient, http, publicActions } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { CHAIN_ID, getViemChain } from "./config.js";
 
 // ---------------------------------------------------------------------------
-// Local facilitator for testing — registers the x402r commerce scheme.
+// Local facilitator for testing — registers the x402r authCapture scheme.
 //
-// Temporary: use until ultravioleta facilitator supports commerce scheme.
+// Temporary: use until ultravioleta facilitator supports authCapture scheme.
 // Should eventually live in x402r-scheme/examples/facilitator/.
 //
 // Usage: pnpm run facilitator
@@ -56,13 +55,9 @@ const evmSigner = toFacilitatorEvmSigner({
 });
 
 const facilitator = new x402Facilitator();
-registerCommerceEvmScheme(facilitator, {
+registerAuthCaptureEvmScheme(facilitator, {
   signer: evmSigner,
   networks: `eip155:${CHAIN_ID}`,
-  defaults: {
-    escrowAddress: authCaptureEscrow,
-    tokenCollector,
-  },
 });
 
 const app = express();
@@ -102,6 +97,6 @@ app.get("/supported", (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`[facilitator] Commerce scheme on :${PORT} (chain ${CHAIN_ID})`);
+  console.log(`[facilitator] AuthCapture scheme on :${PORT} (chain ${CHAIN_ID})`);
   console.log(`[facilitator] Address: ${account.address}`);
 });

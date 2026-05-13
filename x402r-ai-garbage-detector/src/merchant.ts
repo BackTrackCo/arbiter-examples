@@ -3,12 +3,12 @@ import cors from "cors";
 import type { Address } from "viem";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient } from "@x402/core/server";
-import { CommerceServerScheme } from "@x402r/evm/commerce/server";
+import { AuthCaptureServerScheme } from "@x402r/evm/authCapture/server";
 import {
   createAttestationExtension,
   declareAttestationExtension,
 } from "@x402r/evm/extensions/attestation";
-import { authCaptureEscrow, tokenCollector, forwardToArbiter } from "@x402r/helpers";
+import { forwardToArbiter, x402rDefaults } from "@x402r/helpers";
 import { CHAIN_ID } from "./config.js";
 import { loadContext } from "./scripts/shared.js";
 
@@ -36,7 +36,7 @@ if (!operatorAddress) {
 
 const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
 const resourceServer = new x402ResourceServer(facilitatorClient)
-  .register(networkId, new CommerceServerScheme())
+  .register(networkId, new AuthCaptureServerScheme())
   .registerExtension(createAttestationExtension(ARBITER_URL))
   .onAfterSettle(forwardToArbiter(ARBITER_URL));
 
@@ -47,33 +47,27 @@ app.use(cors());
 app.use(paymentMiddleware({
   "GET /weather": {
     accepts: [{
-      scheme: "commerce" as const,
+      scheme: "authCapture" as const,
       network: networkId,
       price: "$0.01",
       payTo: MERCHANT_ADDRESS,
-      extra: {
-        escrowAddress: authCaptureEscrow,
-        operatorAddress: operatorAddress,
-        tokenCollector,
-        feeReceiver: operatorAddress,
+      extra: { ...x402rDefaults({
+        captureAuthorizer: operatorAddress,
         maxFeeBps: 500,
-      },
+      }) },
     }],
     extensions: declareAttestationExtension(),
   },
   "GET /garbage": {
     accepts: [{
-      scheme: "commerce" as const,
+      scheme: "authCapture" as const,
       network: networkId,
       price: "$0.01",
       payTo: MERCHANT_ADDRESS,
-      extra: {
-        escrowAddress: authCaptureEscrow,
-        operatorAddress: operatorAddress,
-        tokenCollector,
-        feeReceiver: operatorAddress,
+      extra: { ...x402rDefaults({
+        captureAuthorizer: operatorAddress,
         maxFeeBps: 500,
-      },
+      }) },
     }],
     extensions: declareAttestationExtension(),
   },
