@@ -25,6 +25,10 @@ const PORT = Number(process.env.PORT ?? process.env.MERCHANT_PORT ?? 4021);
 const FACILITATOR_URL = process.env.FACILITATOR_URL;
 if (!FACILITATOR_URL) throw new Error("FACILITATOR_URL env required");
 const ARBITER_URL = process.env.ARBITER_URL ?? "http://localhost:3001";
+// Optional: absolute URL agents should call (e.g. https://merchant.example.com).
+// Used to populate the OpenAPI `servers` field for x402scan discovery; defaults
+// to the request origin when not set.
+const PUBLIC_URL = process.env.PUBLIC_URL;
 const networkId = `eip155:${CHAIN_ID}` as const;
 
 // Prefer env var, fall back to context.json
@@ -52,11 +56,17 @@ const unpaidResponseBody = () => ({
   },
 });
 
+// Single source of truth for price. Drives both the x402 runtime `accepts`
+// (`$0.01`) and the OpenAPI `x-payment-info.amount` (`0.010000` USD).
+const PRICE_USD_CENTS = 1;
+const PRICE_USD_DISPLAY = `$${(PRICE_USD_CENTS / 100).toFixed(2)}`;
+const PRICE_USD_AMOUNT = (PRICE_USD_CENTS / 100).toFixed(6);
+
 const paidRoute = {
   accepts: [{
     scheme: "commerce" as const,
     network: networkId,
-    price: "$0.01",
+    price: PRICE_USD_DISPLAY,
     payTo: MERCHANT_ADDRESS,
     extra: {
       escrowAddress: authCaptureEscrow,
@@ -86,17 +96,131 @@ app.use((_req, res, next) => {
   next();
 });
 
+// OpenAPI document for x402scan discovery. Must be mounted before the payment
+// middleware so it stays free to fetch. See https://www.x402scan.com/discovery/spec
+//
+// `@agentcash/discovery` prepends `new URL(servers[0].url).pathname` to every
+// registered route, so we collapse the public URL to its origin to avoid
+// silently registering /<sub-path>/weather instead of /weather.
+const toOrigin = (raw: string): string => {
+  try { return new URL(raw).origin; } catch { return raw; }
+};
+const buildOpenApi = (publicUrl: string) => ({
+  openapi: "3.1.0",
+  info: {
+    title: "x402r AI Garbage Detector",
+    version: "0.1.0",
+    description:
+      "Demo merchant for x402r refundable payments. Responses that the configured AI arbiter classifies as garbage trigger an automatic on-chain refund of the buyer's escrow.",
+    "x-guidance":
+      "Two USD $0.01 demo endpoints behind a refundable x402r escrow. GET /weather returns a clean payload (arbiter PASSes, escrow is captured). GET /garbage returns an error-shaped payload (arbiter FAILs, escrow voids and the buyer is auto-refunded after the window). Pair the two to exercise both happy and refund paths.",
+  },
+  servers: [{ url: publicUrl }],
+  paths: {
+    "/weather": {
+      get: {
+        operationId: "getWeather",
+        summary: "Weather demo (arbiter PASS path)",
+        tags: ["Demo"],
+        "x-payment-info": {
+          price: { mode: "fixed", currency: "USD", amount: PRICE_USD_AMOUNT },
+          protocols: [{ x402: {} }],
+        },
+        parameters: [
+          {
+            name: "location",
+            in: "query",
+            required: false,
+            description: "Optional label echoed in the `location` response field. Defaults to 'San Francisco'.",
+            schema: { type: "string", maxLength: 64 },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Weather payload",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    location: { type: "string" },
+                    temperature: { type: "number" },
+                    conditions: { type: "string" },
+                    timestamp: { type: "string", format: "date-time" },
+                  },
+                  required: ["location", "temperature", "conditions", "timestamp"],
+                },
+              },
+            },
+          },
+          "402": { description: "Payment Required" },
+        },
+      },
+    },
+    "/garbage": {
+      get: {
+        operationId: "getGarbage",
+        summary: "Garbage demo (arbiter FAIL, auto-refund path)",
+        tags: ["Demo"],
+        "x-payment-info": {
+          price: { mode: "fixed", currency: "USD", amount: PRICE_USD_AMOUNT },
+          protocols: [{ x402: {} }],
+        },
+        parameters: [
+          {
+            name: "seed",
+            in: "query",
+            required: false,
+            description: "Optional integer echoed back in the response. Lets agents distinguish replays in logs.",
+            schema: { type: "integer" },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Error-shaped 'garbage' payload returned with HTTP 200 (the body is what the arbiter judges)",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error: { type: "string" },
+                    message: { type: "string" },
+                    code: { type: "integer" },
+                    seed: { type: "integer" },
+                  },
+                  required: ["error", "message", "code"],
+                },
+              },
+            },
+          },
+          "402": { description: "Payment Required" },
+        },
+      },
+    },
+  },
+});
+
+app.get("/openapi.json", (req, res) => {
+  const publicUrl = toOrigin(PUBLIC_URL ?? `${req.protocol}://${req.get("host")}`);
+  res.json(buildOpenApi(publicUrl));
+});
+
 app.use(paymentMiddleware({
   "GET /weather": paidRoute,
   "GET /garbage": paidRoute,
 }, resourceServer));
 
-app.get("/weather", (_req, res) => {
-  res.json({ location: "San Francisco", temperature: 68, conditions: "Partly cloudy", timestamp: new Date().toISOString() });
+app.get("/weather", (req, res) => {
+  const raw = req.query.location;
+  const location = typeof raw === "string" && raw.length > 0 && raw.length <= 64 ? raw : "San Francisco";
+  res.json({ location, temperature: 68, conditions: "Partly cloudy", timestamp: new Date().toISOString() });
 });
 
-app.get("/garbage", (_req, res) => {
-  res.json({ error: "Internal Server Error", message: "Something went wrong", code: 500 });
+app.get("/garbage", (req, res) => {
+  const body: Record<string, unknown> = { error: "Internal Server Error", message: "Something went wrong", code: 500 };
+  const seed = Number(req.query.seed);
+  if (Number.isFinite(seed)) body.seed = seed;
+  res.json(body);
 });
 
 app.listen(PORT, () => {

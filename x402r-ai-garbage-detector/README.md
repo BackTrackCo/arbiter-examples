@@ -186,6 +186,36 @@ PRIVATE_KEY=0x... ./src/scripts/pay-via-cli.sh /garbage
 This is the same flow `pnpm run client` exercises via the SDK, just without
 installing anything.
 
+## x402scan discovery
+
+The merchant serves an OpenAPI 3.1 document at `GET /openapi.json` so the demo
+endpoints are discoverable by agents through
+[x402scan](https://www.x402scan.com/discovery/spec). Each route advertises its
+price via `x-payment-info` and exposes an input schema (`parameters`) so the
+endpoint is invocable, not just visible.
+
+```bash
+$ curl -s http://localhost:4021/openapi.json | jq '.paths | keys'
+[
+  "/garbage",
+  "/weather"
+]
+```
+
+To register a public deployment, set `PUBLIC_URL` so the `servers` field
+reflects the externally reachable origin (otherwise it falls back to the
+request host). The value is normalized to its origin, so any path or trailing
+slash is stripped before being written into the OpenAPI doc:
+
+```env
+PUBLIC_URL=https://my-merchant.example.com
+```
+
+Then submit the deployment URL at
+[x402scan.com/resources/register](https://www.x402scan.com/resources/register).
+x402scan fetches `/openapi.json` and probes the runtime `402` challenge to
+verify discoverability.
+
 ## Scripts
 
 | Script | Purpose |
