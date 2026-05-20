@@ -56,11 +56,17 @@ const unpaidResponseBody = () => ({
   },
 });
 
+// Single source of truth for price. Drives both the x402 runtime `accepts`
+// (`$0.01`) and the OpenAPI `x-payment-info.amount` (`0.010000` USD).
+const PRICE_USD_CENTS = 1;
+const PRICE_USD_DISPLAY = `$${(PRICE_USD_CENTS / 100).toFixed(2)}`;
+const PRICE_USD_AMOUNT = (PRICE_USD_CENTS / 100).toFixed(6);
+
 const paidRoute = {
   accepts: [{
     scheme: "commerce" as const,
     network: networkId,
-    price: "$0.01",
+    price: PRICE_USD_DISPLAY,
     payTo: MERCHANT_ADDRESS,
     extra: {
       escrowAddress: authCaptureEscrow,
@@ -92,7 +98,13 @@ app.use((_req, res, next) => {
 
 // OpenAPI document for x402scan discovery. Must be mounted before the payment
 // middleware so it stays free to fetch. See https://www.x402scan.com/discovery/spec
-const PRICE_USD = "0.010000";
+//
+// `@agentcash/discovery` prepends `new URL(servers[0].url).pathname` to every
+// registered route, so we collapse the public URL to its origin to avoid
+// silently registering /<sub-path>/weather instead of /weather.
+const toOrigin = (raw: string): string => {
+  try { return new URL(raw).origin; } catch { return raw; }
+};
 const buildOpenApi = (publicUrl: string) => ({
   openapi: "3.1.0",
   info: {
@@ -111,7 +123,7 @@ const buildOpenApi = (publicUrl: string) => ({
         summary: "Weather demo (arbiter PASS path)",
         tags: ["Demo"],
         "x-payment-info": {
-          price: { mode: "fixed", currency: "USD", amount: PRICE_USD },
+          price: { mode: "fixed", currency: "USD", amount: PRICE_USD_AMOUNT },
           protocols: [{ x402: {} }],
         },
         parameters: [
@@ -151,7 +163,7 @@ const buildOpenApi = (publicUrl: string) => ({
         summary: "Garbage demo (arbiter FAIL, auto-refund path)",
         tags: ["Demo"],
         "x-payment-info": {
-          price: { mode: "fixed", currency: "USD", amount: PRICE_USD },
+          price: { mode: "fixed", currency: "USD", amount: PRICE_USD_AMOUNT },
           protocols: [{ x402: {} }],
         },
         parameters: [
@@ -189,7 +201,7 @@ const buildOpenApi = (publicUrl: string) => ({
 });
 
 app.get("/openapi.json", (req, res) => {
-  const publicUrl = PUBLIC_URL ?? `${req.protocol}://${req.get("host")}`;
+  const publicUrl = toOrigin(PUBLIC_URL ?? `${req.protocol}://${req.get("host")}`);
   res.json(buildOpenApi(publicUrl));
 });
 

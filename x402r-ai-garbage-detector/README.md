@@ -204,7 +204,8 @@ $ curl -s http://localhost:4021/openapi.json | jq '.paths | keys'
 
 To register a public deployment, set `PUBLIC_URL` so the `servers` field
 reflects the externally reachable origin (otherwise it falls back to the
-request host):
+request host). The value is normalized to its origin, so any path or trailing
+slash is stripped before being written into the OpenAPI doc:
 
 ```env
 PUBLIC_URL=https://my-merchant.example.com
