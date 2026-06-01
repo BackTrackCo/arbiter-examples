@@ -1,5 +1,5 @@
 import { toClientEvmSigner } from "@x402/evm";
-import { AuthCaptureEvmScheme } from "@x402r/evm/authCapture/client";
+import { AuthCaptureEvmScheme } from "@x402/evm/auth-capture/client";
 import { wrapFetchWithPayment } from "@x402/fetch";
 import { x402Client } from "@x402/core/client";
 import { CHAIN_ID } from "./config.js";

@@ -162,7 +162,7 @@ app.post("/verify", async (req, res) => {
   const { responseBody, transaction, paymentPayload } = req.body;
   if (!responseBody) { res.status(400).json({ error: "responseBody is required" }); return; }
 
-  const scheme = paymentPayload?.accepted?.scheme ?? "authCapture";
+  const scheme = paymentPayload?.accepted?.scheme ?? "auth-capture";
   const network = paymentPayload?.accepted?.network ?? `eip155:${CHAIN_IDS[0]}`;
   const chainId = parseChainId(network);
   console.log(`[verify] tx=${transaction ?? "unknown"} scheme=${scheme} chain=${chainId}`);
@@ -191,7 +191,7 @@ app.post("/verify", async (req, res) => {
       payer, transaction, network, arbiter: clients.account.address, timestamp: Date.now(),
     };
 
-    if (scheme === "authCapture" && accepted && extra && authz) {
+    if (scheme === "auth-capture" && accepted && extra && authz) {
       const pi = {
         operator: extra.captureAuthorizer as Address,
         payer,
@@ -315,8 +315,8 @@ app.post("/attest/identity", (_req, res) => {
       payload: "GET /verdict/:tx/payload — retrieve the evaluated response body (payer auth required).",
     },
     paymentScheme: {
-      scheme: "authCapture",
-      description: "Refundable payments via x402r authCapture scheme. Funds are held in escrow during delivery verification. If the arbiter detects garbage, the payer is refunded automatically.",
+      scheme: "auth-capture",
+      description: "Refundable payments via x402r auth-capture scheme. Funds are held in escrow during delivery verification. If the arbiter detects garbage, the payer is refunded automatically.",
       flow: [
         "1. Client requests a paid endpoint, receives 402 with payment requirements",
         "2. Client signs an ERC-3009 transferWithAuthorization + EIP-712 paymentInfo",
@@ -325,7 +325,7 @@ app.post("/attest/identity", (_req, res) => {
         "5. Merchant serves content, forwards response body to arbiter",
         "6. Arbiter evaluates: PASS releases funds to merchant, FAIL refunds payer",
       ],
-      sdk: "npm install @x402/fetch @x402r/evm — use wrapFetchWithPayment() with AuthCaptureEvmScheme",
+      sdk: "npm install @x402/fetch @x402/evm — use wrapFetchWithPayment() with AuthCaptureEvmScheme",
       cli: "PRIVATE_KEY=0x... npx @x402r/cli@~0.2 pay <url>",
     },
   });

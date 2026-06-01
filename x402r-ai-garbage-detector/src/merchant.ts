@@ -3,7 +3,7 @@ import cors from "cors";
 import type { Address } from "viem";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient } from "@x402/core/server";
-import { AuthCaptureServerScheme } from "@x402r/evm/authCapture/server";
+import { AuthCaptureEvmScheme } from "@x402r/evm/auth-capture/server";
 import {
   createAttestationExtension,
   declareAttestationExtension,
@@ -36,7 +36,7 @@ if (!operatorAddress) {
 
 const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
 const resourceServer = new x402ResourceServer(facilitatorClient)
-  .register(networkId, new AuthCaptureServerScheme())
+  .register(networkId, new AuthCaptureEvmScheme())
   .registerExtension(createAttestationExtension(ARBITER_URL))
   .onAfterSettle(forwardToArbiter(ARBITER_URL));
 
@@ -71,7 +71,7 @@ app.use((_req, res, next) => {
 app.use(paymentMiddleware({
   "GET /weather": {
     accepts: [{
-      scheme: "authCapture" as const,
+      scheme: "auth-capture" as const,
       network: networkId,
       price: "$0.01",
       payTo: MERCHANT_ADDRESS,
@@ -85,7 +85,7 @@ app.use(paymentMiddleware({
   },
   "GET /garbage": {
     accepts: [{
-      scheme: "authCapture" as const,
+      scheme: "auth-capture" as const,
       network: networkId,
       price: "$0.01",
       payTo: MERCHANT_ADDRESS,

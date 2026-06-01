@@ -1,7 +1,7 @@
 import { x402Facilitator } from "@x402/core/facilitator";
 import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 import { toFacilitatorEvmSigner } from "@x402/evm";
-import { registerAuthCaptureEvmScheme } from "@x402r/evm/authCapture/facilitator";
+import { AuthCaptureEvmScheme } from "@x402r/evm/auth-capture/facilitator";
 import express from "express";
 import { createWalletClient, http, publicActions } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -55,10 +55,7 @@ const evmSigner = toFacilitatorEvmSigner({
 });
 
 const facilitator = new x402Facilitator();
-registerAuthCaptureEvmScheme(facilitator, {
-  signer: evmSigner,
-  networks: `eip155:${CHAIN_ID}`,
-});
+facilitator.register(`eip155:${CHAIN_ID}`, new AuthCaptureEvmScheme(evmSigner));
 
 const app = express();
 app.use(express.json());
