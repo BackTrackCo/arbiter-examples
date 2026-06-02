@@ -129,10 +129,31 @@ app.use(express.json({ limit: "1mb" }));
  * discover payments via the PaymentIndexRecorder and trigger refunds
  * after the escrow window.
  */
+/**
+ * forwardToArbiter fires the instant the merchant's settle returns, which can be
+ * before the on-chain authorize tx is visible in the RPC state the capture/void
+ * simulation reads (public RPCs load-balance across slightly-lagging nodes). The
+ * escrow then reverts `ZeroAuthorization` even though the funds are arriving.
+ * Retry until the authorization is visible.
+ */
+async function withSettleRetry<T>(fn: () => Promise<T>, label: string, tries = 6, delayMs = 4000): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const msg = err.shortMessage ?? err.message ?? String(err);
+      const notYetVisible = msg.includes("ZeroAuthorization") || msg.includes("0x93bb7a12");
+      if (!notYetVisible || attempt >= tries) throw err;
+      console.warn(`[${label}] authorization not visible yet (attempt ${attempt}/${tries}), retrying in ${delayMs}ms`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+}
+
 async function refundPayer(sdk: any, paymentInfo: any, transaction: string): Promise<{ hash?: Hex; error?: string }> {
   console.log(`[verify] FAIL — refunding immediately for tx=${transaction ?? "unknown"}`);
   try {
-    const hash = await sdk.payment.voidPayment(paymentInfo);
+    const hash = await withSettleRetry<Hex>(() => sdk.payment.voidPayment(paymentInfo), `refund ${transaction}`);
     console.log(`[refund] tx=${transaction} refunded: ${hash}`);
     return { hash };
   } catch (err: any) {
@@ -190,7 +211,7 @@ app.post("/verify", async (req, res) => {
     if (pi) {
       if (gv.verdict === "PASS") {
         try {
-          stored.captureHash = await sdk.garbageDetector.capture(pi);
+          stored.captureHash = await withSettleRetry<Hex>(() => sdk.garbageDetector.capture(pi), `capture ${transaction}`);
           console.log(`[verify] Captured: ${stored.captureHash}`);
         } catch (err: any) {
           console.error("[verify] Capture failed:", err.shortMessage ?? err.message ?? err);
