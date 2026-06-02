@@ -3,7 +3,7 @@ import cors from "cors";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Address, type Hex, erc20Abi, formatUnits, keccak256, toBytes } from "viem";
-import { createX402r } from "@x402r/sdk";
+import { createX402r, PaymentInfo } from "@x402r/sdk";
 import { type GarbageVerdict } from "./garbage-detector.js";
 import { garbageDetectorActions, type GarbageDetectorActions } from "./garbage-detector-plugin.js";
 import { CHAIN_IDS, INFERENCE_SEED, createProvider, getUsdcAddress } from "./config.js";
@@ -159,11 +159,11 @@ function parseChainId(network: string): number {
 
 // POST /verify — evaluate content, release on PASS (called by @x402r/helpers forwardToArbiter)
 app.post("/verify", async (req, res) => {
-  const { responseBody, transaction, paymentPayload } = req.body;
+  const { responseBody, transaction, paymentInfoWire } = req.body;
   if (!responseBody) { res.status(400).json({ error: "responseBody is required" }); return; }
 
-  const scheme = paymentPayload?.accepted?.scheme ?? "auth-capture";
-  const network = paymentPayload?.accepted?.network ?? `eip155:${CHAIN_IDS[0]}`;
+  const scheme = "auth-capture";
+  const network = `eip155:${CHAIN_IDS[0]}`;
   const chainId = parseChainId(network);
   console.log(`[verify] tx=${transaction ?? "unknown"} scheme=${scheme} chain=${chainId}`);
   try {
@@ -178,41 +178,22 @@ app.post("/verify", async (req, res) => {
     console.log(`[verify] ${gv.verdict} — ${gv.reason}`);
 
     const bodyStr = typeof responseBody === "string" ? responseBody : JSON.stringify(responseBody);
-    // authCapture wire payload doesn't carry an inline paymentInfo struct —
-    // reconstruct from accepted requirements + extra + signed authorization.
-    // Spec field renames (captureAuthorizer/captureDeadline/refundDeadline/
-    // feeRecipient) map back to the canonical Solidity PaymentInfo names below.
-    const accepted = paymentPayload?.accepted;
-    const extra = accepted?.extra;
-    const authz = paymentPayload?.payload?.authorization;
-    const payer = (authz?.from ?? "0x0") as Address;
+    // forwardToArbiter ships the JSON-form PaymentInfoWire (canonical field names);
+    // PaymentInfo.fromWire() restores the bigint fields for SDK actions.
+    const pi = paymentInfoWire ? PaymentInfo.fromWire(paymentInfoWire) : undefined;
+    const payer = (pi?.payer ?? "0x0") as Address;
     const stored: StoredVerdict = {
       verdict: gv, responseBody: bodyStr, responseBodyHash: keccak256(toBytes(bodyStr)),
       payer, transaction, network, arbiter: clients.account.address, timestamp: Date.now(),
     };
 
-    if (scheme === "auth-capture" && accepted && extra && authz) {
-      const pi = {
-        operator: extra.captureAuthorizer as Address,
-        payer,
-        receiver: accepted.payTo as Address,
-        token: accepted.asset as Address,
-        maxAmount: BigInt(accepted.amount),
-        preApprovalExpiry: Number(authz.validBefore),
-        authorizationExpiry: Number(extra.captureDeadline),
-        refundExpiry: Number(extra.refundDeadline),
-        minFeeBps: Number(extra.minFeeBps),
-        maxFeeBps: Number(extra.maxFeeBps),
-        feeReceiver: extra.feeRecipient as Address,
-        salt: BigInt(paymentPayload.payload.salt),
-      };
-
+    if (pi) {
       if (gv.verdict === "PASS") {
         try {
           stored.captureHash = await sdk.garbageDetector.capture(pi);
-          console.log(`[verify] Released: ${stored.captureHash}`);
+          console.log(`[verify] Captured: ${stored.captureHash}`);
         } catch (err: any) {
-          console.error("[verify] Release failed:", err.shortMessage ?? err.message ?? err);
+          console.error("[verify] Capture failed:", err.shortMessage ?? err.message ?? err);
         }
       } else {
         // FAIL: arbiter can refund immediately (SAC(arbiter) in void OrCondition)
