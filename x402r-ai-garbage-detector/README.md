@@ -148,8 +148,8 @@ const sdk = createX402r({ ... }).extend(
 | Method | Description |
 |--------|-------------|
 | **`evaluate(responseBody)`** | Run garbage detection, return verdict + commitment |
-| **`capture(paymentInfo, amount?)`** | Release escrowed funds (arbiter calls on PASS) |
-| **`evaluateAndRelease(responseBody, paymentInfo, amount?)`** | Evaluate + release in one call |
+| **`capture(paymentInfo, amount?)`** | Capture escrowed funds (arbiter calls on PASS) |
+| **`evaluateAndCapture(responseBody, paymentInfo, amount?)`** | Evaluate + capture in one call |
 
 ## Pay via curl / CLI
 

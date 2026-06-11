@@ -8,9 +8,9 @@ import { privateKeyToAccount } from "viem/accounts";
 import { CHAIN_ID, getViemChain } from "./config.js";
 
 // ---------------------------------------------------------------------------
-// Local facilitator for testing — registers the x402r authCapture scheme.
+// Local facilitator for testing — registers the x402r auth-capture scheme.
 //
-// Temporary: use until ultravioleta facilitator supports authCapture scheme.
+// Temporary: use until ultravioleta facilitator supports the auth-capture scheme.
 // Should eventually live in x402r-scheme/examples/facilitator/.
 //
 // Usage: pnpm run facilitator
@@ -94,6 +94,6 @@ app.get("/supported", (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`[facilitator] AuthCapture scheme on :${PORT} (chain ${CHAIN_ID})`);
+  console.log(`[facilitator] auth-capture scheme on :${PORT} (chain ${CHAIN_ID})`);
   console.log(`[facilitator] Address: ${account.address}`);
 });

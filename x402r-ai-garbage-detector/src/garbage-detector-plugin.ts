@@ -20,10 +20,10 @@ export interface GarbageDetectorActions {
   garbageDetector: {
     /** Evaluate response body via configured inference provider. Returns PASS or FAIL with commitment. */
     evaluate(responseBody: string): Promise<GarbageVerdict>;
-    /** Release escrowed funds (arbiter calls this when verdict is PASS). */
+    /** Capture escrowed funds (arbiter calls this when verdict is PASS). */
     capture(paymentInfo: PaymentInfo, amount?: bigint): Promise<Hash>;
-    /** Evaluate + release in one call. Returns verdict; releases on PASS. */
-    evaluateAndRelease(
+    /** Evaluate + capture in one call. Returns verdict; captures on PASS. */
+    evaluateAndCapture(
       responseBody: string,
       paymentInfo: PaymentInfo,
       amount?: bigint,
@@ -46,7 +46,7 @@ export function garbageDetectorActions(config: GarbageDetectorConfig) {
         return client.payment.capture(paymentInfo, amount ?? paymentInfo.maxAmount);
       },
 
-      async evaluateAndRelease(responseBody, paymentInfo, amount) {
+      async evaluateAndCapture(responseBody, paymentInfo, amount) {
         const verdict = await detectGarbage(config.provider, responseBody, config.seed);
         let captureHash: Hash | null = null;
         if (verdict.verdict === "PASS") {

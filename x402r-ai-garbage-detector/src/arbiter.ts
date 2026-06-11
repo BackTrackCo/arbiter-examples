@@ -124,7 +124,7 @@ app.use(express.json({ limit: "1mb" }));
  * Refund the payer immediately on FAIL verdict.
  *
  * The delivery protection v2 operator includes SAC(arbiter) in the
- * voidPreActionCondition OrCondition, so the arbiter can refund without
+ * voidCondition OrCondition, so the arbiter can refund without
  * waiting for the escrow period to expire. Independent keepers can also
  * discover payments via the PaymentIndexRecorder and trigger refunds
  * after the escrow window.
@@ -142,6 +142,8 @@ async function withSettleRetry<T>(fn: () => Promise<T>, label: string, tries = 6
       return await fn();
     } catch (err: any) {
       const msg = err.shortMessage ?? err.message ?? String(err);
+      // 0x93bb7a12 = keccak256("ZeroAuthorization(bytes32)")[:4], for reverts that
+      // surface as raw calldata instead of a decoded error name
       const notYetVisible = msg.includes("ZeroAuthorization") || msg.includes("0x93bb7a12");
       if (!notYetVisible || attempt >= tries) throw err;
       console.warn(`[${label}] authorization not visible yet (attempt ${attempt}/${tries}), retrying in ${delayMs}ms`);
