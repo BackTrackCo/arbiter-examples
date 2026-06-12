@@ -11,6 +11,13 @@ pnpm run merchant           # start merchant with payment middleware (separate t
 pnpm run client             # make paid requests and check verdicts (separate terminal)
 ```
 
+What success looks like per step:
+
+- **setup** writes the deployed addresses to `context.json` and prints the operator address
+- **arbiter** prints `[arbiter] Garbage detector on :3001` plus its address, chains, provider, and ETH/USDC balances (warns if either is 0)
+- **merchant** prints `[merchant] Running on :4021` with the pay-to and operator addresses
+- **client** pays `/weather` (expect `PASS` then `Captured: 0x...` in the arbiter logs) and `/garbage` (expect `FAIL` then `refunded: 0x...`). A few `authorization not visible yet ... retrying` warnings in between are normal (see note below)
+
 ## Architecture
 
 Three systems work together: x402r (payment escrow), AI inference (content evaluation), and x402 middleware (HTTP payment flow).
