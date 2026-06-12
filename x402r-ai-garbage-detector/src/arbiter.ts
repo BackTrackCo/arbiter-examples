@@ -126,17 +126,29 @@ app.use(express.json({ limit: "1mb" }));
  * simulation reads (public RPCs load-balance across slightly-lagging nodes). The
  * escrow then reverts `ZeroAuthorization` even though the funds are arriving.
  * Retry until the authorization is visible.
+ *
+ * Detection walks the error cause chain: the SDK wraps reverts in
+ * ContractCallError whose `shortMessage` is just "<action> failed", and the
+ * escrow's error defs are not on the operator ABI the call goes through, so
+ * the revert never decodes to a name. The raw selector in `details`/`message`
+ * is the only reliable signal.
  */
+const ZERO_AUTHORIZATION_SELECTOR = "0x93bb7a12"; // keccak256("ZeroAuthorization(bytes32)")[:4]
+
+function isAuthorizationNotVisible(err: unknown): boolean {
+  for (let e = err as any; e; e = e.cause) {
+    const text = `${e.revertName ?? ""}\n${e.message ?? ""}\n${e.details ?? ""}`;
+    if (text.includes("ZeroAuthorization") || text.includes(ZERO_AUTHORIZATION_SELECTOR)) return true;
+  }
+  return false;
+}
+
 async function withSettleRetry<T>(fn: () => Promise<T>, label: string, tries = 6, delayMs = 4000): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
       return await fn();
-    } catch (err: any) {
-      const msg = err.shortMessage ?? err.message ?? String(err);
-      // 0x93bb7a12 = keccak256("ZeroAuthorization(bytes32)")[:4], for reverts that
-      // surface as raw calldata instead of a decoded error name
-      const notYetVisible = msg.includes("ZeroAuthorization") || msg.includes("0x93bb7a12");
-      if (!notYetVisible || attempt >= tries) throw err;
+    } catch (err) {
+      if (!isAuthorizationNotVisible(err) || attempt >= tries) throw err;
       console.warn(`[${label}] authorization not visible yet (attempt ${attempt}/${tries}), retrying in ${delayMs}ms`);
       await new Promise((r) => setTimeout(r, delayMs));
     }
