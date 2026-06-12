@@ -35,7 +35,9 @@ Three systems work together: x402r (payment escrow), AI inference (content evalu
 3. **Hook** fires `forwardToArbiter()` which POSTs the response body to the arbiter (async, fire-and-forget)
 4. **Arbiter** evaluates the response via the configured provider:
    - **PASS** -- calls `sdk.garbageDetector.capture(paymentInfo)` to release escrowed funds to merchant
-   - **FAIL** -- does nothing, escrow period expires, anyone calls `void()` for automatic refund
+   - **FAIL** -- calls `sdk.payment.voidPayment(paymentInfo)` to refund the payer immediately (the void condition includes `SAC(arbiter)`); after the escrow window anyone can `void()` as a fallback
+
+> **Note:** right after a payment you may see `authorization not visible yet ... retrying` in the arbiter logs. This is normal and self-healing: the merchant forwards to the arbiter the instant settle returns, which can be before the authorize tx is visible to the arbiter's RPC node. The arbiter retries until it is.
 
 ## Inference Providers
 
@@ -104,7 +106,7 @@ cp .env.eigencloud.example .env.arbiter
 ecloud compute app deploy
 ```
 
-TEE attestation covers the entire container -- model weights, prompt, and decision logic -- proving the arbiter ran untampered. See [x402r-arbiter-eigencloud](../../x402r-arbiter-eigencloud/) for the `ecloud` CLI reference.
+TEE attestation covers the entire container -- model weights, prompt, and decision logic -- proving the arbiter ran untampered. Manage the deployed app with `ecloud compute app info | logs | stop | terminate`.
 
 ### EigenAI (legacy)
 
@@ -118,7 +120,7 @@ EIGENAI_MODEL=gpt-oss-120b-f16
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 22+
 - Wallet with Base Sepolia ETH ([faucet](https://www.alchemy.com/faucets/base-sepolia)) and USDC ([Circle faucet](https://faucet.circle.com/) -- select Base Sepolia)
 
 ```bash
@@ -126,7 +128,8 @@ pnpm install
 cp .env.arbiter.example .env.arbiter
 cp .env.merchant.example .env.merchant
 cp .env.client.example .env.client
-# Fill in PRIVATE_KEY in each + operator addresses from setup
+# Fill in PRIVATE_KEY in each. Operator addresses are read automatically
+# from the context.json written by `pnpm run setup`.
 ```
 
 ## The Plugin
@@ -149,7 +152,6 @@ const sdk = createX402r({ ... }).extend(
 |--------|-------------|
 | **`evaluate(responseBody)`** | Run garbage detection, return verdict + commitment |
 | **`capture(paymentInfo, amount?)`** | Capture escrowed funds (arbiter calls on PASS) |
-| **`evaluateAndCapture(responseBody, paymentInfo, amount?)`** | Evaluate + capture in one call |
 
 ## Pay via curl / CLI
 
@@ -173,7 +175,7 @@ startup from the arbiter's `/attest/identity` endpoint. Note this endpoint
 lives on the arbiter, not the merchant:
 
 ```bash
-PRIVATE_KEY=0x... npx @x402r/cli@~0.2 pay http://localhost:4021/weather --json
+PRIVATE_KEY=0x... npx @x402r/cli@~0.3 pay http://localhost:4021/weather --json
 ```
 
 A copy-paste wrapper is included at [`src/scripts/pay-via-cli.sh`](./src/scripts/pay-via-cli.sh):
@@ -198,8 +200,7 @@ installing anything.
 
 ## Limitations
 
-- **In-memory verdict store** -- verdicts are lost on arbiter restart (a production arbiter would persist to a database)
-- **Workspace package links** -- `@x402r/core` and `@x402r/sdk` link to workspace source, not npm
+- **File-based verdict store** -- verdicts persist as JSON files in `VERDICTS_DIR` (a production arbiter would use a database)
 - **Same wallet** -- example uses the same private key for arbiter, merchant, and client (in production these would be separate)
 
 ## Contracts

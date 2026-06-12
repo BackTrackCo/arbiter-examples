@@ -3,7 +3,7 @@ import cors from "cors";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Address, type Hex, erc20Abi, formatUnits, keccak256, toBytes } from "viem";
-import { createX402r, PaymentInfo } from "@x402r/sdk";
+import { createX402r, PaymentInfo, type X402r } from "@x402r/sdk";
 import { type GarbageVerdict } from "./garbage-detector.js";
 import { garbageDetectorActions, type GarbageDetectorActions } from "./garbage-detector-plugin.js";
 import { CHAIN_IDS, INFERENCE_SEED, createProvider, getUsdcAddress } from "./config.js";
@@ -121,15 +121,6 @@ app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
 /**
- * Refund the payer immediately on FAIL verdict.
- *
- * The delivery protection v2 operator includes SAC(arbiter) in the
- * voidCondition OrCondition, so the arbiter can refund without
- * waiting for the escrow period to expire. Independent keepers can also
- * discover payments via the PaymentIndexRecorder and trigger refunds
- * after the escrow window.
- */
-/**
  * forwardToArbiter fires the instant the merchant's settle returns, which can be
  * before the on-chain authorize tx is visible in the RPC state the capture/void
  * simulation reads (public RPCs load-balance across slightly-lagging nodes). The
@@ -152,7 +143,16 @@ async function withSettleRetry<T>(fn: () => Promise<T>, label: string, tries = 6
   }
 }
 
-async function refundPayer(sdk: any, paymentInfo: any, transaction: string): Promise<{ hash?: Hex; error?: string }> {
+/**
+ * Refund the payer immediately on FAIL verdict.
+ *
+ * The delivery protection v2 operator includes SAC(arbiter) in the
+ * voidCondition OrCondition, so the arbiter can refund without
+ * waiting for the escrow period to expire. Independent keepers can also
+ * discover payments via the PaymentIndexRecorder and trigger refunds
+ * after the escrow window.
+ */
+async function refundPayer(sdk: X402r, paymentInfo: PaymentInfo, transaction: string): Promise<{ hash?: Hex; error?: string }> {
   console.log(`[verify] FAIL — refunding immediately for tx=${transaction ?? "unknown"}`);
   try {
     const hash = await withSettleRetry<Hex>(() => sdk.payment.voidPayment(paymentInfo), `refund ${transaction}`);
@@ -165,30 +165,16 @@ async function refundPayer(sdk: any, paymentInfo: any, transaction: string): Pro
   }
 }
 
-/** Parse chain ID from eip155 network string (e.g. "eip155:84532" -> 84532). */
-function parseChainId(network: string): number {
-  const match = network.match(/^eip155:(\d+)$/);
-  if (!match) {
-    console.warn(`[verify] Malformed network "${network}", falling back to chain ${CHAIN_IDS[0]}`);
-    return CHAIN_IDS[0];
-  }
-  const chainId = Number(match[1]);
-  if (!CHAIN_IDS.includes(chainId)) {
-    console.warn(`[verify] Chain ${chainId} not in CHAIN_IDS [${CHAIN_IDS}], falling back to ${CHAIN_IDS[0]}`);
-    return CHAIN_IDS[0];
-  }
-  return chainId;
-}
-
 // POST /verify — evaluate content, release on PASS (called by @x402r/helpers forwardToArbiter)
 app.post("/verify", async (req, res) => {
   const { responseBody, transaction, paymentInfoWire } = req.body;
   if (!responseBody) { res.status(400).json({ error: "responseBody is required" }); return; }
 
-  const scheme = "auth-capture";
-  const network = `eip155:${CHAIN_IDS[0]}`;
-  const chainId = parseChainId(network);
-  console.log(`[verify] tx=${transaction ?? "unknown"} scheme=${scheme} chain=${chainId}`);
+  // Single-chain demo: the forwardToArbiter wire payload carries no chain id,
+  // so the arbiter always operates on the first configured chain.
+  const chainId = CHAIN_IDS[0];
+  const network = `eip155:${chainId}`;
+  console.log(`[verify] tx=${transaction ?? "unknown"} scheme=auth-capture chain=${chainId}`);
   try {
     const opAddr = operatorAddress;
     if (!opAddr) throw new Error("No operator address — run setup or set OPERATOR_ADDRESS");
@@ -224,6 +210,11 @@ app.post("/verify", async (req, res) => {
         stored.refundHash = result.hash;
         stored.refundError = result.error;
       }
+    } else {
+      console.warn(
+        `[verify] tx=${transaction ?? "unknown"} arrived without paymentInfoWire: ` +
+        `verdict stored but no on-chain action taken. Check the merchant's forwardToArbiter wiring.`,
+      );
     }
 
     saveVerdict(transaction, stored);
@@ -330,7 +321,7 @@ app.post("/attest/identity", (_req, res) => {
         "6. Arbiter evaluates: PASS releases funds to merchant, FAIL refunds payer",
       ],
       sdk: "npm install @x402/fetch @x402/evm — use wrapFetchWithPayment() with AuthCaptureEvmScheme",
-      cli: "PRIVATE_KEY=0x... npx @x402r/cli@~0.2 pay <url>",
+      cli: "PRIVATE_KEY=0x... npx @x402r/cli@~0.3 pay <url>",
     },
   });
 });

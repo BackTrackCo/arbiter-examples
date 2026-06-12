@@ -22,12 +22,6 @@ export interface GarbageDetectorActions {
     evaluate(responseBody: string): Promise<GarbageVerdict>;
     /** Capture escrowed funds (arbiter calls this when verdict is PASS). */
     capture(paymentInfo: PaymentInfo, amount?: bigint): Promise<Hash>;
-    /** Evaluate + capture in one call. Returns verdict; captures on PASS. */
-    evaluateAndCapture(
-      responseBody: string,
-      paymentInfo: PaymentInfo,
-      amount?: bigint,
-    ): Promise<GarbageVerdict & { captureHash: Hash | null }>;
   };
 }
 
@@ -44,18 +38,6 @@ export function garbageDetectorActions(config: GarbageDetectorConfig) {
 
       capture(paymentInfo, amount) {
         return client.payment.capture(paymentInfo, amount ?? paymentInfo.maxAmount);
-      },
-
-      async evaluateAndCapture(responseBody, paymentInfo, amount) {
-        const verdict = await detectGarbage(config.provider, responseBody, config.seed);
-        let captureHash: Hash | null = null;
-        if (verdict.verdict === "PASS") {
-          captureHash = await client.payment.capture(
-            paymentInfo,
-            amount ?? paymentInfo.maxAmount,
-          );
-        }
-        return { ...verdict, captureHash };
       },
     },
   });

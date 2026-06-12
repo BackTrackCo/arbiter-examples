@@ -44,7 +44,7 @@ await arbiter.kleros.execute(localDisputeID, paymentInfo)
 
 ## Quick start
 
-Requires Node.js 18+, pnpm, Foundry. Wallet needs Arb Sepolia ETH and USDC. Evidence upload needs a [Pinata](https://pinata.cloud) JWT (free tier).
+Requires Node.js 22+, pnpm, Foundry. Wallet needs Arb Sepolia ETH and USDC. Evidence upload needs a [Pinata](https://pinata.cloud) JWT (free tier).
 
 ```bash
 pnpm install

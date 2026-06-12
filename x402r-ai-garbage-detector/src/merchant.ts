@@ -68,35 +68,24 @@ app.use((_req, res, next) => {
   next();
 });
 
+const paidRoute = {
+  accepts: [{
+    scheme: "auth-capture" as const,
+    network: networkId,
+    price: "$0.01",
+    payTo: MERCHANT_ADDRESS,
+    extra: x402rDefaults({
+      captureAuthorizer: operatorAddress,
+      maxFeeBps: 500,
+    }),
+  }],
+  extensions: declareAttestationExtension(),
+  unpaidResponseBody,
+};
+
 app.use(paymentMiddleware({
-  "GET /weather": {
-    accepts: [{
-      scheme: "auth-capture" as const,
-      network: networkId,
-      price: "$0.01",
-      payTo: MERCHANT_ADDRESS,
-      extra: { ...x402rDefaults({
-        captureAuthorizer: operatorAddress,
-        maxFeeBps: 500,
-      }) },
-    }],
-    extensions: declareAttestationExtension(),
-    unpaidResponseBody,
-  },
-  "GET /garbage": {
-    accepts: [{
-      scheme: "auth-capture" as const,
-      network: networkId,
-      price: "$0.01",
-      payTo: MERCHANT_ADDRESS,
-      extra: { ...x402rDefaults({
-        captureAuthorizer: operatorAddress,
-        maxFeeBps: 500,
-      }) },
-    }],
-    extensions: declareAttestationExtension(),
-    unpaidResponseBody,
-  },
+  "GET /weather": paidRoute,
+  "GET /garbage": paidRoute,
 }, resourceServer));
 
 app.get("/weather", (_req, res) => {
