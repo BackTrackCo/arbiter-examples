@@ -3,12 +3,12 @@ import cors from "cors";
 import type { Address } from "viem";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient } from "@x402/core/server";
-import { CommerceServerScheme } from "@x402r/evm/commerce/server";
+import { AuthCaptureEvmScheme } from "@x402r/evm/auth-capture/server";
 import {
   createAttestationExtension,
   declareAttestationExtension,
 } from "@x402r/evm/extensions/attestation";
-import { authCaptureEscrow, tokenCollector, forwardToArbiter } from "@x402r/helpers";
+import { forwardToArbiter, x402rDefaults } from "@x402r/helpers";
 import { CHAIN_ID } from "./config.js";
 import { loadContext } from "./scripts/shared.js";
 
@@ -36,7 +36,7 @@ if (!operatorAddress) {
 
 const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
 const resourceServer = new x402ResourceServer(facilitatorClient)
-  .register(networkId, new CommerceServerScheme())
+  .register(networkId, new AuthCaptureEvmScheme())
   .registerExtension(createAttestationExtension(ARBITER_URL))
   .onAfterSettle(forwardToArbiter(ARBITER_URL));
 
@@ -51,24 +51,6 @@ const unpaidResponseBody = () => ({
     help: `See payment-required header (base64 JSON) or ${DOCS_URL}`,
   },
 });
-
-const paidRoute = {
-  accepts: [{
-    scheme: "commerce" as const,
-    network: networkId,
-    price: "$0.01",
-    payTo: MERCHANT_ADDRESS,
-    extra: {
-      escrowAddress: authCaptureEscrow,
-      operatorAddress: operatorAddress,
-      tokenCollector,
-      feeReceiver: operatorAddress,
-      maxFeeBps: 500,
-    },
-  }],
-  extensions: declareAttestationExtension(),
-  unpaidResponseBody,
-};
 
 const app = express();
 app.set("trust proxy", true);
@@ -85,6 +67,21 @@ app.use((_req, res, next) => {
   };
   next();
 });
+
+const paidRoute = {
+  accepts: [{
+    scheme: "auth-capture" as const,
+    network: networkId,
+    price: "$0.01",
+    payTo: MERCHANT_ADDRESS,
+    extra: x402rDefaults({
+      captureAuthorizer: operatorAddress,
+      maxFeeBps: 500,
+    }),
+  }],
+  extensions: declareAttestationExtension(),
+  unpaidResponseBody,
+};
 
 app.use(paymentMiddleware({
   "GET /weather": paidRoute,
