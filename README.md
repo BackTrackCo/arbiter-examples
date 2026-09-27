@@ -8,6 +8,7 @@ Example arbiter implementations for [x402r](https://github.com/BackTrackCo/x402r
 | --- | --- |
 | [`x402r-ai-garbage-detector`](x402r-ai-garbage-detector) | AI garbage detection arbiter with pluggable inference providers (OpenAI, Ollama/TEE, ClawRouter) |
 | [`x402r-kleros-example`](x402r-kleros-example) | Kleros arbitration for x402r refund disputes on Arbitrum Sepolia |
+| [`x402r-schema-check`](x402r-schema-check) | Deterministic arbiter: judges responses against JSON rules published before payment, with a public receipt anyone holding the response can confirm |
 
 ## Related
 

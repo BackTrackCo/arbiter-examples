@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+# Every env file holds a private key; only the templates are committed.
+.env.*
+!.env.*.example
+context.json
+verdicts/
+*.log
+.DS_Store
