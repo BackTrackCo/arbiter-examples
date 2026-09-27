@@ -1,0 +1,6 @@
+{
+  "kind": "json-array",
+  "length": 3,
+  "item_keys": ["day", "high", "low", "unit"],
+  "allowed": [{ "field": "unit", "values": ["C", "F"] }]
+}

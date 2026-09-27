@@ -1,0 +1,384 @@
+import express from "express";
+import cors from "cors";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { type Address, type Hex, formatUnits, keccak256, toBytes } from "viem";
+import { createX402r, PaymentInfo, type X402r } from "@x402r/sdk";
+import { type SchemaVerdict } from "./schema-check.js";
+import { schemaCheckActions, type SchemaCheckActions } from "./schema-check-plugin.js";
+import { CHAIN_IDS, loadSchemaCheckSettings } from "./config.js";
+import { createClients, getChainClients, x402rConfig, loadContext } from "./scripts/shared.js";
+
+// ---------------------------------------------------------------------------
+// Arbiter: judge response bodies against published rules, release on PASS
+//
+// The decision is deterministic: the body is checked against a JSON spec
+// (spec.json) with Ergonia's schema-check@1, and every verdict is chained in
+// a public log with the SHA-256 of the body it judged. Anyone who holds the
+// body can re-run the check or read the receipt to confirm it.
+//
+// Endpoints:
+//   POST /verify            — judge content + release on PASS, refund on FAIL
+//   POST /attest/identity   — attestation extension (arbiter identity for 402 response)
+//   GET  /verdict/:tx       — poll verdict and its public receipt
+//   GET  /health            — status
+// ---------------------------------------------------------------------------
+
+const clients = createClients();
+const settings = loadSchemaCheckSettings();
+const PORT = Number(process.env.PORT ?? process.env.ARBITER_PORT ?? 3001);
+// Public URL this arbiter is reachable at, advertised in /attest/identity so
+// clients can find it from the 402 response without prior configuration.
+// Validated at startup so typos fail fast instead of poisoning every 402 response.
+const ARBITER_PUBLIC_URL = (() => {
+  const raw = process.env.ARBITER_PUBLIC_URL;
+  if (!raw) return undefined;
+  try {
+    return new URL(raw).toString().replace(/\/$/, "");
+  } catch {
+    throw new Error(`ARBITER_PUBLIC_URL is not a valid URL: ${raw}`);
+  }
+})();
+
+let operatorAddress: Address | undefined;
+let escrowPeriodAddress: Address | undefined;
+try {
+  const ctx = loadContext();
+  operatorAddress = ctx.operatorAddress;
+  escrowPeriodAddress = ctx.escrowPeriodAddress;
+} catch {
+  operatorAddress = process.env.OPERATOR_ADDRESS as Address | undefined;
+  escrowPeriodAddress = process.env.ESCROW_PERIOD_ADDRESS as Address | undefined;
+}
+
+interface StoredVerdict {
+  verdict: SchemaVerdict;
+  responseBody: string;
+  responseBodyHash: Hex;
+  payer: Address;
+  transaction: string;
+  network: string;
+  arbiter: Address;
+  captureHash?: Hex;
+  refundHash?: Hex;
+  refundError?: string;
+  timestamp: number;
+}
+
+// ---------------------------------------------------------------------------
+// Verdict persistence -- survives arbiter restarts so clients can always
+// retrieve the payload the arbiter evaluated (needed for anti-cheating).
+// Each verdict is stored as a JSON file in VERDICTS_DIR keyed by tx hash.
+// ---------------------------------------------------------------------------
+
+const VERDICTS_DIR = process.env.VERDICTS_DIR ?? "verdicts";
+const MAX_CACHE = 1_000;
+const verdictCache = new Map<string, StoredVerdict>();
+
+function ensureVerdictDir() {
+  if (!existsSync(VERDICTS_DIR)) mkdirSync(VERDICTS_DIR, { recursive: true });
+}
+
+function txToFilename(tx: string): string {
+  if (!/^0x[a-fA-F0-9]{64}$/.test(tx)) throw new Error(`Invalid tx hash: ${tx}`);
+  return `${tx}.json`;
+}
+
+function saveVerdict(tx: string, verdict: StoredVerdict) {
+  ensureVerdictDir();
+  writeFileSync(join(VERDICTS_DIR, txToFilename(tx)), JSON.stringify(verdict));
+  if (verdictCache.size >= MAX_CACHE) {
+    const oldest = verdictCache.keys().next().value;
+    if (oldest) verdictCache.delete(oldest);
+  }
+  verdictCache.set(tx, verdict);
+}
+
+function loadVerdict(tx: string): StoredVerdict | undefined {
+  if (verdictCache.has(tx)) return verdictCache.get(tx);
+  let filename: string;
+  try { filename = txToFilename(tx); } catch { return undefined; }
+  const path = join(VERDICTS_DIR, filename);
+  if (!existsSync(path)) return undefined;
+  try {
+    const v = JSON.parse(readFileSync(path, "utf-8")) as StoredVerdict;
+    verdictCache.set(tx, v);
+    return v;
+  } catch (err) {
+    console.warn(`[verdict] Failed to load ${path}:`, err);
+    return undefined;
+  }
+}
+
+function getVerdictCount(): number {
+  ensureVerdictDir();
+  try { return readdirSync(VERDICTS_DIR).filter((f) => f.endsWith(".json")).length; }
+  catch { return verdictCache.size; }
+}
+
+const app = express();
+app.use(cors());
+app.use(express.json({ limit: "1mb" }));
+
+/**
+ * forwardToArbiter fires the instant the merchant's settle returns, which can be
+ * before the on-chain authorize tx is visible in the RPC state the capture/void
+ * simulation reads (public RPCs load-balance across slightly-lagging nodes). The
+ * escrow then reverts `ZeroAuthorization` even though the funds are arriving.
+ * Retry until the authorization is visible.
+ *
+ * Detection walks the error cause chain: the SDK wraps reverts in
+ * ContractCallError whose `shortMessage` is just "<action> failed", and the
+ * escrow's error defs are not on the operator ABI the call goes through, so
+ * the revert never decodes to a name. The raw selector in `details`/`message`
+ * is the only reliable signal.
+ */
+const ZERO_AUTHORIZATION_SELECTOR = "0x93bb7a12"; // keccak256("ZeroAuthorization(bytes32)")[:4]
+
+function isAuthorizationNotVisible(err: unknown): boolean {
+  for (let e = err as any; e; e = e.cause) {
+    const text = `${e.revertName ?? ""}\n${e.message ?? ""}\n${e.details ?? ""}`;
+    if (text.includes("ZeroAuthorization") || text.includes(ZERO_AUTHORIZATION_SELECTOR)) return true;
+  }
+  return false;
+}
+
+async function withSettleRetry<T>(fn: () => Promise<T>, label: string, tries = 6, delayMs = 4000): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isAuthorizationNotVisible(err) || attempt >= tries) throw err;
+      console.warn(`[${label}] authorization not visible yet (attempt ${attempt}/${tries}), retrying in ${delayMs}ms`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+}
+
+/**
+ * Refund the payer immediately on FAIL verdict.
+ *
+ * The delivery protection v2 operator includes SAC(arbiter) in the
+ * voidCondition OrCondition, so the arbiter can refund without
+ * waiting for the escrow period to expire. Independent keepers can also
+ * discover payments via the PaymentIndexRecorder and trigger refunds
+ * after the escrow window.
+ */
+async function refundPayer(sdk: X402r, paymentInfo: PaymentInfo, transaction: string): Promise<{ hash?: Hex; error?: string }> {
+  console.log(`[verify] FAIL — refunding immediately for tx=${transaction ?? "unknown"}`);
+  try {
+    const hash = await withSettleRetry<Hex>(() => sdk.payment.voidPayment(paymentInfo), `refund ${transaction}`);
+    console.log(`[refund] tx=${transaction} refunded: ${hash}`);
+    return { hash };
+  } catch (err: any) {
+    const msg = err.shortMessage ?? err.message ?? String(err);
+    console.error(`[refund] tx=${transaction} failed:`, msg);
+    return { error: msg };
+  }
+}
+
+// POST /verify — judge content, release on PASS (called by @x402r/helpers forwardToArbiter)
+app.post("/verify", async (req, res) => {
+  const { responseBody, transaction, paymentInfoWire } = req.body;
+  if (!responseBody) { res.status(400).json({ error: "responseBody is required" }); return; }
+
+  // Single-chain demo: the forwardToArbiter wire payload carries no chain id,
+  // so the arbiter always operates on the first configured chain.
+  const chainId = CHAIN_IDS[0];
+  const network = `eip155:${chainId}`;
+  console.log(`[verify] tx=${transaction ?? "unknown"} scheme=auth-capture chain=${chainId}`);
+  try {
+    const opAddr = operatorAddress;
+    if (!opAddr) throw new Error("No operator address — run setup or set OPERATOR_ADDRESS");
+    if (!escrowPeriodAddress) throw new Error("No escrowPeriodAddress — run setup or set ESCROW_PERIOD_ADDRESS");
+
+    const sdk = createX402r(x402rConfig({ operatorAddress: opAddr, escrowPeriodAddress }, clients, chainId))
+      .extend(schemaCheckActions(settings) as any) as unknown as ReturnType<typeof createX402r> & SchemaCheckActions;
+
+    // Judge the exact text the client received: the receipt records its
+    // SHA-256, so the payer can match it against the body it holds.
+    const bodyStr = typeof responseBody === "string" ? responseBody : JSON.stringify(responseBody);
+    // No verdict (checker unreachable, key refused) throws here, before any
+    // on-chain action: the escrow period then returns the funds to the payer.
+    const sv = await sdk.schemaCheck.evaluate(bodyStr);
+    console.log(`[verify] ${sv.verdict} — ${sv.reason}`);
+    console.log(`[verify] receipt: ${sv.receipt.url}`);
+
+    // forwardToArbiter ships the JSON-form PaymentInfoWire (canonical field names);
+    // PaymentInfo.fromWire() restores the bigint fields for SDK actions.
+    const pi = paymentInfoWire ? PaymentInfo.fromWire(paymentInfoWire) : undefined;
+    const payer = (pi?.payer ?? "0x0") as Address;
+    const stored: StoredVerdict = {
+      verdict: sv, responseBody: bodyStr, responseBodyHash: keccak256(toBytes(bodyStr)),
+      payer, transaction, network, arbiter: clients.account.address, timestamp: Date.now(),
+    };
+
+    if (pi) {
+      if (sv.verdict === "PASS") {
+        try {
+          stored.captureHash = await withSettleRetry<Hex>(() => sdk.schemaCheck.capture(pi), `capture ${transaction}`);
+          console.log(`[verify] Captured: ${stored.captureHash}`);
+        } catch (err: any) {
+          console.error("[verify] Capture failed:", err.shortMessage ?? err.message ?? err);
+        }
+      } else {
+        // FAIL: arbiter can refund immediately (SAC(arbiter) in void OrCondition)
+        const result = await refundPayer(sdk, pi, transaction);
+        stored.refundHash = result.hash;
+        stored.refundError = result.error;
+      }
+    } else {
+      console.warn(
+        `[verify] tx=${transaction ?? "unknown"} arrived without paymentInfoWire: ` +
+        `verdict stored but no on-chain action taken. Check the merchant's forwardToArbiter wiring.`,
+      );
+    }
+
+    if (transaction) saveVerdict(transaction, stored);
+    res.json({
+      verdict: sv.verdict,
+      reason: sv.reason,
+      receipt: sv.receipt,
+      captureHash: stored.captureHash ?? null,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[verify] Error:", msg);
+    res.status(502).json({ error: "Schema check failed; no on-chain action taken", detail: msg });
+  }
+});
+
+app.get("/verdict/:transaction", (req, res) => {
+  const stored = loadVerdict(req.params.transaction);
+  if (!stored) { res.status(404).json({ error: "Not found" }); return; }
+  res.json({
+    verdict: stored.verdict.verdict,
+    reason: stored.verdict.reason,
+    findings: stored.verdict.findings,
+    receipt: stored.verdict.receipt,
+    responseBodyHash: stored.responseBodyHash,
+    arbiter: stored.arbiter,
+    captureHash: stored.captureHash ?? null,
+    refundHash: stored.refundHash ?? null,
+    refundError: stored.refundError ?? null,
+    timestamp: stored.timestamp,
+  });
+});
+
+// GET /verdict/:tx/payload — returns the response body the arbiter evaluated
+// Protected by payer auth: only the wallet that paid can retrieve the payload.
+// This prevents the arbiter from becoming a free CDN for paid content while
+// ensuring the client can always get what they paid for, even if the merchant
+// sent them something that failed the rules.
+//
+// Auth: Authorization header = EIP-191 personal_sign of "x402r:payload:{txHash}"
+// The recovered signer must match the payer address from the payment.
+app.get("/verdict/:transaction/payload", async (req, res) => {
+  const stored = loadVerdict(req.params.transaction);
+  if (!stored) { res.status(404).json({ error: "Not found" }); return; }
+
+  const signature = req.headers.authorization as Hex | undefined;
+  if (!signature) {
+    res.status(401).json({
+      error: "Authorization required",
+      message: 'Sign "x402r:payload:{txHash}" with your wallet and pass as Authorization header',
+    });
+    return;
+  }
+
+  try {
+    const message = `x402r:payload:${req.params.transaction}`;
+    const cc = getChainClients(clients, CHAIN_IDS[0]);
+    const valid = await cc.publicClient.verifyMessage({
+      address: stored.payer,
+      message,
+      signature,
+    });
+    if (!valid) {
+      res.status(403).json({ error: "Signature does not match payer" });
+      return;
+    }
+  } catch {
+    res.status(403).json({ error: "Invalid signature" });
+    return;
+  }
+
+  res.json({
+    responseBody: stored.responseBody,
+    responseBodyHash: stored.responseBodyHash,
+  });
+});
+
+// POST /attest/identity — attestation extension support
+// Lets the merchant's resource server include arbiter identity in the 402
+// response so clients can verify an independent arbiter exists before paying,
+// and read the rules the response will be judged against.
+// Used by `createAttestationExtension()` from `@x402r/evm`.
+app.post("/attest/identity", (_req, res) => {
+  res.json({
+    type: "schema-check",
+    arbiter: clients.account.address,
+    ...(ARBITER_PUBLIC_URL && { url: ARBITER_PUBLIC_URL }),
+    operator: operatorAddress ?? null,
+    chains: CHAIN_IDS,
+    description: "Deterministic delivery protection arbiter. Judges paid API responses against the JSON rules below, published before payment. PASS releases payment to merchant. FAIL triggers automatic refund to payer. Same body and same rules always give the same verdict, and every verdict is chained in a public log with the SHA-256 of the body it judged.",
+    rules: settings.spec,
+    checker: {
+      verifier: "schema-check@1",
+      endpoint: `${settings.ergoniaUrl}/api/check`,
+      grammar: `${settings.ergoniaUrl}/api/verifiers/schema-check`,
+      chain: `${settings.ergoniaUrl}/api/attest`,
+    },
+    skills: {
+      evaluate: "POST /verify — submit a response body. Returns PASS/FAIL with the failing rules and a public receipt.",
+      verdicts: "GET /verdict/:tx — retrieve the verdict and receipt for a given payment transaction hash.",
+      payload: "GET /verdict/:tx/payload — retrieve the evaluated response body (payer auth required).",
+    },
+    paymentScheme: {
+      scheme: "auth-capture",
+      description: "Refundable payments via x402r auth-capture scheme. Funds are held in escrow during delivery verification. If the response breaks the published rules, the payer is refunded automatically.",
+      flow: [
+        "1. Client requests a paid endpoint, receives 402 with payment requirements",
+        "2. Client signs an ERC-3009 transferWithAuthorization + EIP-712 paymentInfo",
+        "3. Client retries with PAYMENT-SIGNATURE header (base64-encoded payload)",
+        "4. Merchant forwards to facilitator for verify + settle (funds enter escrow)",
+        "5. Merchant serves content, forwards response body to arbiter",
+        "6. Arbiter checks the body against the rules: PASS releases funds to merchant, FAIL refunds payer",
+      ],
+      sdk: "npm install @x402/fetch @x402/evm — use wrapFetchWithPayment() with AuthCaptureEvmScheme",
+      cli: "PRIVATE_KEY=0x... npx @x402r/cli@~0.3 pay <url>",
+    },
+  });
+});
+
+app.get("/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    arbiter: clients.account.address,
+    chains: CHAIN_IDS,
+    operator: operatorAddress ?? null,
+    checker: `${settings.ergoniaUrl}/api/check`,
+    specFile: settings.specFile,
+    verdictCount: getVerdictCount(),
+  });
+});
+
+app.listen(PORT, async () => {
+  console.log(`[arbiter] Schema-check arbiter on :${PORT}`);
+  console.log(`[arbiter] Address: ${clients.account.address}`);
+  console.log(`[arbiter] Chains: ${CHAIN_IDS.join(", ")}`);
+  console.log(`[arbiter] Checker: ${settings.ergoniaUrl}/api/check, rules: ${settings.specFile}`);
+  if (operatorAddress) console.log(`[arbiter] Operator: ${operatorAddress}`);
+
+  // Check the gas balance on the default chain — the arbiter pays for capture/void txs
+  try {
+    const cc = getChainClients(clients, CHAIN_IDS[0]);
+    const ethBalance = await cc.publicClient.getBalance({ address: clients.account.address });
+    console.log(`[arbiter] ETH: ${formatUnits(ethBalance, 18)}`);
+    if (ethBalance === 0n) {
+      console.warn(`[arbiter] ⚠ No ETH — fund ${clients.account.address} for gas (release txs)`);
+    }
+  } catch (err) {
+    console.warn("[arbiter] Balance check failed (RPC misconfigured?):", err instanceof Error ? err.message : err);
+  }
+});
