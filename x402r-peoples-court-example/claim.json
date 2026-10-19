@@ -1,0 +1,3 @@
+{
+  "reason": "This is a testnet integration dispute. The merchant offered weather with a numeric temperature for 0.01 USDC. The paid response returned temperature:null and upstream unavailable. I request a full refund because the promised numeric temperature was not delivered. The paid response is attached verbatim."
+}

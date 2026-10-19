@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "protocol-arbitration-terms-v2",
+  "rulesVersion": "1.1",
+  "rulesHash": "fea33523dd43c2ce6c48db95920df052c9098f6d29938eb83ffb7ae864fa6925",
+  "behaviorVersion": "behavior-1.7-legal-research-sections",
+  "feePolicyVersion": "caseplan-1.7-card-inclusive-pricing",
+  "fastTrackMaxUsd": 100,
+  "fastDisclosureVersion": "case-tier-disclosure-2026-10-11-ai_fast",
+  "fastDisclosureHash": "3c2aeb7b14b992cb079ebb74f7d8cde07424a2c25595ba37ef2b7bc76e06b15f",
+  "fastProcedureTermsHash": "e73e8bde709d408319930a402e29dae3bcd943fbb76810579246d7068d7141bd",
+  "standardDisclosureVersion": "case-tier-disclosure-2026-10-11-ai_standard",
+  "standardDisclosureHash": "84d402438bcba23eaf3cda6219d46b834c90f4ccb51d47195edabb8a26eee211",
+  "standardProcedureTermsHash": "be3d67d4f61e8ed1dc5fba8d8958593b4b22499209e1fc580fb66fa8478cc210",
+  "protocolDisclosureVersion": "protocol-terms-in-effect-2026-09-29",
+  "protocolDisclosureHash": "115a2feb130e9de4f40cdaecbbe0f3ca4bfeba31803f40f7e04ef40166e3abe4",
+  "termsHash": "518669710687625d2c6260229475a23eef322879c607a0bd73fb588cbf113f1a"
+}

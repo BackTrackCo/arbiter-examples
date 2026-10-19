@@ -1,0 +1,29 @@
+{
+  "name": "x402r-peoples-court-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.23.2"
+  },
+  "scripts": {
+    "setup": "node --env-file=.env src/scripts/setup.mjs",
+    "merchant": "node --env-file=.env src/scripts/merchant.mjs",
+    "client": "node --env-file=.env src/scripts/client.mjs",
+    "refund": "node --env-file=.env src/scripts/refund.mjs",
+    "refer": "node --env-file=.env src/scripts/refer.mjs",
+    "fee": "node --env-file=.env src/scripts/fee.mjs",
+    "answer": "node --env-file=.env src/scripts/answer.mjs",
+    "observe": "node --env-file=.env src/scripts/observe.mjs",
+    "check": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@x402/core": "2.19.0",
+    "@x402/evm": "2.19.0",
+    "@x402r/core": "0.3.0-alpha.0",
+    "@x402r/evm": "0.2.0-alpha.1",
+    "@x402r/helpers": "0.3.0-alpha.0",
+    "@x402r/sdk": "0.3.0-alpha.0",
+    "viem": "2.56.0"
+  }
+}

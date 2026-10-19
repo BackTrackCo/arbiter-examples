@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-10-19T16:31:16.919Z",
+  "synthetic": true,
+  "hosted": false,
+  "chainId": 84532,
+  "appSourceCommit": "126618f6590e6e09484c2934a08ae54ebbdf5313",
+  "exampleCodeCommit": "2aeb7838ef133cef17633d123eab4208c2263ba5",
+  "node": "v22.23.2",
+  "packageLockSha256": "6a1eab07ae4f9802fde8d50da322c89f356a30e3960f002eaf676e8ffc127ec3",
+  "appBuildId": "h36fJnMQvJTOSDtqTprYZ",
+  "amountBaseUnits": "10000",
+  "payer": "0x6da64CDC42A5D8458e993ac7ff0613c2DbA288F6",
+  "merchant": "0x3987aA8b081e0A5a6772842aBeF203e4B42B831b",
+  "arbiter": "0xA64DC1d426ED26681508f2E99a600Cb46b217cbD",
+  "operator": "0x80754BA4594aF01726ee8ce80F30B5362227eca7",
+  "paymentInfoHash": "0x036ea7a6aa8289ef726e7d3dadda270341afcd405bf10cee892f1431c039cf1b",
+  "termsHash": "518669710687625d2c6260229475a23eef322879c607a0bd73fb588cbf113f1a",
+  "holdSeconds": "2678400",
+  "caseId": "dis_9fffff2d-0ec9-4d94-8f73-9228b8e7ee12",
+  "finalStatus": "final_release_executed",
+  "feeWaived": true,
+  "adjudication": {
+    "status": "succeeded",
+    "attempt": 1,
+    "modelCalls": 1,
+    "totalTokens": 4455
+  },
+  "award": {
+    "hash": "b2ec69c5cc879509050d4fae4440af451b049b9d7bc5336a159f0562d2e1f0bb",
+    "revision": 1,
+    "releasedAt": "2026-10-19T16:29:05.993Z",
+    "originalExecuteAfter": "2026-10-26T16:29:05.993Z",
+    "manifestHashVerified": true,
+    "signatureVerified": true,
+    "servedFieldsUnchangedAfterClock": true,
+    "artifacts": [
+      {
+        "kind": "pdf",
+        "byteLength": 37414,
+        "sha256": "9013a0fa98630189d8a33b5ec755e6bf086aaa2f27409a3e3a368db946dcf9a4",
+        "partyAuthenticatedDownloadVerified": true
+      },
+      {
+        "kind": "docx",
+        "byteLength": 13073,
+        "sha256": "306fad7e728089e9d4fd769264f0365a755f11e2d992ddd28c696bcdfd93bc84",
+        "partyAuthenticatedDownloadVerified": true
+      },
+      {
+        "kind": "json",
+        "byteLength": 13371,
+        "sha256": "fe298d1615dabb4dd281105f0c2b4a94650221fdb08b11a0c884dbb60631af33",
+        "partyAuthenticatedDownloadVerified": true
+      }
+    ]
+  },
+  "testClock": {
+    "designationAt": "2026-10-19T16:28:37.111Z",
+    "offsetMs": 604784000,
+    "wallNow": 1792427372345,
+    "proceduralNow": 1793032156345,
+    "executionAdmissionRecorded": true
+  },
+  "settlement": {
+    "action": "void",
+    "provenance": "test",
+    "paymentVoidedAmountBaseUnits": "10000",
+    "payerTransferAmountBaseUnits": "10000",
+    "hasCollectedPayment": true,
+    "capturableBaseUnits": "0",
+    "refundableBaseUnits": "0"
+  },
+  "transactions": [
+    {
+      "step": "authorization",
+      "hash": "0x0cf7bbacada54e7e3aff63a77f9c30b99b62ad1d5e2f2c8d3b25586e4a28db78",
+      "status": "success",
+      "blockNumber": "48329495",
+      "blockTime": "2026-10-19T16:27:58.000Z",
+      "from": "0x3987aa8b081e0a5a6772842abef203e4b42b831b",
+      "to": "0x80754ba4594af01726ee8ce80f30b5362227eca7"
+    },
+    {
+      "step": "refundRequest",
+      "hash": "0x673139564e101464b3ea3d246c682dbfd537e1cd3dee8f7b7585ca07698b2b7f",
+      "status": "success",
+      "blockNumber": "48329502",
+      "blockTime": "2026-10-19T16:28:12.000Z",
+      "from": "0x6da64cdc42a5d8458e993ac7ff0613c2dba288f6",
+      "to": "0x37ffe6eb9f57243e478c7b7bc23a8251e948baf4"
+    },
+    {
+      "step": "evidence",
+      "hash": "0x6df7992c0d5939ae6e057e09120df5da2bdf8e39090fc8fc5ec5cf394989b26c",
+      "status": "success",
+      "blockNumber": "48329504",
+      "blockTime": "2026-10-19T16:28:16.000Z",
+      "from": "0x6da64cdc42a5d8458e993ac7ff0613c2dba288f6",
+      "to": "0xe388b6f6ed46310eca5644d6a5218e284144c78a"
+    },
+    {
+      "step": "settlement",
+      "hash": "0x22f8738b69c482523e476257c7542f626d94ee2bfb8734d1b7341c3d647c0a76",
+      "status": "success",
+      "blockNumber": "48329543",
+      "blockTime": "2026-10-19T16:29:34.000Z",
+      "from": "0xa64dc1d426ed26681508f2e99a600cb46b217cbd",
+      "to": "0x80754ba4594af01726ee8ce80f30b5362227eca7"
+    }
+  ],
+  "limits": [
+    "Local service; hosted endpoint and fee collection untested.",
+    "Supported test clock accelerated only the post-service wait; natural seven-day timing untested.",
+    "No appeal, merchant capture, split allocation, or watcher recovery exercised.",
+    "Separate exact-money JSON projection route returned HTTP500 for USDC; immutable served JSON was verified through the format download route.",
+    "The completed synthetic exchange was operator-closed; natural briefing timing was not exercised."
+  ],
+  "assetAddress": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+}

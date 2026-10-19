@@ -8,6 +8,7 @@ Example arbiter implementations for [x402r](https://github.com/BackTrackCo/x402r
 | --- | --- |
 | [`x402r-ai-garbage-detector`](x402r-ai-garbage-detector) | AI garbage detection arbiter with pluggable inference providers (OpenAI, Ollama/TEE, ClawRouter) |
 | [`x402r-kleros-example`](x402r-kleros-example) | Kleros arbitration for x402r refund disputes on Arbitrum Sepolia |
+| [`x402r-peoples-court-example`](x402r-peoples-court-example) | People’s Court arbitration for x402r refund disputes on Base Sepolia; requires operator registration and a provisioned integration credential |
 
 ## Related
 
